@@ -1,850 +1,622 @@
-import React, { useMemo, useEffect, useLayoutEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useOS } from '../context/OSContext';
-import { INSTALLED_APPS, DOCK_APPS } from '../constants';
-import { isDevDebugAvailable, subscribeDevDebugAvailability } from '../utils/devDebug';
-import AppIcon from '../components/os/AppIcon';
-import { DB } from '../utils/db';
-import { CharacterProfile, Anniversary, AppID, DailySchedule } from '../types';
-import { ScheduleHomeWidget, ScheduleFullscreenViewer } from '../components/schedule/ScheduleHomeWidget';
-import NowPlayingSquareWidget from '../components/os/NowPlayingSquareWidget';
+import { INSTALLED_APPS, Icons } from '../constants';
+import { Cloud, CloudRain, MagnifyingGlass, Moon, Sun, X } from '@phosphor-icons/react';
+import { RealtimeContextManager, type WeatherData } from '../utils/realtimeContext';
+import { isDevDebugAvailable } from '../utils/devDebug';
+import { AppID } from '../types';
 
-// --- Isolated Components to prevent full re-renders ---
+// Required Notice: Copyright (c) 2024-2026 NMJ (SullyOS / 手抓糯米机)
+const IOS_DOCK = [AppID.GroupChat, AppID.Chat, AppID.Browser, AppID.Music];
 
-// 1. Clock Component (Consumes virtualTime)
-const DesktopClock = React.memo(() => {
-    const { virtualTime, theme } = useOS();
-    const contentColor = theme.contentColor || '#ffffff';
+const IOS_FOLDERS: { name: string; apps: AppID[] }[] = [
+    { name: '社交网络', apps: [AppID.Social, AppID.CheckPhone, AppID.Call, AppID.Date] },
+    { name: '校园学习', apps: [AppID.Study, AppID.Worldbook, AppID.Schedule, AppID.FAQ] },
+    { name: '影音创作', apps: [AppID.Gallery, AppID.Songwriting, AppID.XhsStock, AppID.VoiceDesigner] },
+    { name: 'AI 助手', apps: [AppID.Character, AppID.MemoryPalace, AppID.Guidebook] },
+    { name: '生活娱乐', apps: [AppID.Room, AppID.LifeSim, AppID.Game, AppID.SpecialMoments] },
+    { name: '办公文档', apps: [AppID.Journal, AppID.Novel, AppID.User, AppID.Handbook] },
+    { name: '出行探索', apps: [AppID.VRWorld, AppID.XhsFreeRoam, AppID.HotNews] },
+    { name: '生活工具', apps: [AppID.Appearance, AppID.ThemeMaker, AppID.Bank] },
+];
 
-    const days = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const now = new Date();
-    const dayName = days[now.getDay()];
-    const monthName = months[now.getMonth()];
-    const dateNum = now.getDate().toString().padStart(2, '0');
-    const yearNum = now.getFullYear();
+const IOS_SECONDARY = [
+    AppID.Character,
+    AppID.Social,
+    AppID.Gallery,
+    AppID.Settings,
+    AppID.Journal,
+];
 
-    // 简单问候（基于虚拟时间）
-    const greeting = virtualTime.hours < 5 ? 'Good Night'
-        : virtualTime.hours < 12 ? 'Good Morning'
-        : virtualTime.hours < 18 ? 'Good Afternoon'
-        : 'Good Evening';
+const IOS_APPS = [
+    ...INSTALLED_APPS,
+    { id: AppID.Browser, name: '浏览器', icon: 'Browser', color: 'blue' },
+    { id: AppID.VoiceDesigner, name: '捏声音', icon: 'VoiceDesigner', color: 'rose' },
+    { id: AppID.Handbook, name: '手账', icon: 'Handbook', color: 'amber' },
+];
 
-    const hh = virtualTime.hours.toString().padStart(2, '0');
-    const mm = virtualTime.minutes.toString().padStart(2, '0');
+const IOS_ICONS = new Map(IOS_APPS.map(app => [app.id, app]));
 
-    // 动森彩蛋：NookPhone 主屏时钟 —— 问候 + 大号时间(主角) + 星期·日期
-    if (theme.skin === 'animalcrossing') {
-        const weekdayTitle = dayName.charAt(0) + dayName.slice(1).toLowerCase();
-        const monthTitle = monthName.charAt(0) + monthName.slice(1).toLowerCase();
-        return (
-            <div className="mt-7 mb-5 text-center animate-fade-in select-none">
-                <div className="text-[13px] font-extrabold tracking-wide" style={{ color: '#8a7a5c' }}>
-                    🍃 {greeting}, Resident
-                </div>
-                <div className="text-[3.5rem] font-extrabold leading-none mt-1.5 tracking-[2px]" style={{ color: '#8b7355' }}>
-                    {hh}<span className="animate-pulse" style={{ color: '#cfcab2' }}>:</span>{mm}
-                </div>
-                <div className="text-[15px] font-bold mt-1.5" style={{ color: '#725C4E' }}>
-                    {weekdayTitle} · {monthTitle} {Number(dateNum)}
-                </div>
-            </div>
-        );
-    }
+const IOS_HOME_CSS = `
+.ios-home{--icon:clamp(42px,15.8cqw,70px);--row:clamp(68px,24.7cqw,103px);--gutter:6.8%;position:relative;isolation:isolate;container-type:inline-size;width:100%;height:100%;overflow:hidden;color:white;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif}
+.ios-home *{box-sizing:border-box}
+.ios-home button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.ios-home button:focus-visible,.ios-home input:focus-visible{outline:2px solid #a5d1ff;outline-offset:3px}
+.ios-home::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(15,18,26,.08),transparent 43%,rgba(20,24,30,.26))}
+.ios-home-pages{position:absolute;inset:max(56px,calc(var(--safe-top,0px) + 11px)) 0 0;bottom:calc(var(--icon) + 9.4cqw + 32px);display:flex;overflow:auto hidden;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-inline:contain}
+.ios-home-pages::-webkit-scrollbar,.ios-home-page::-webkit-scrollbar{display:none}
+.ios-home-page{flex:0 0 100%;min-width:0;padding:0 var(--gutter) 28px;overflow-y:auto;scroll-snap-align:start;scroll-snap-stop:always;scrollbar-width:none}
+.ios-widget-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6%;margin-bottom:clamp(13px,4.4cqw,23px)}
+.ios-widget-wrap{min-width:0;text-align:center}
+.ios-widget-wide{grid-column:1/-1}
+.ios-widget{width:100%;border-radius:clamp(20px,6.8cqw,32px);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.18);display:flex;position:relative}
+.ios-widget-wide .ios-widget{aspect-ratio:2.13;flex-direction:column;justify-content:space-between;padding:4.7% 5.2%;text-align:left;background:linear-gradient(160deg,#343d4b,#202530 67%,#1a2430)}
+.ios-widget-wrap:not(.ios-widget-wide) .ios-widget{aspect-ratio:1}
+.ios-label{display:block;text-align:center;font-size:clamp(9px,2.75cqw,13px);line-height:1.3;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;text-shadow:0 1px 4px #172030b8;margin-top:4px;max-width:100%}
+.ios-widget-wrap>.ios-label{margin-top:5px}
+.ios-weather-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.ios-weather-city{font-size:clamp(12px,3.8cqw,20px);font-weight:600}
+.ios-weather-temp{font-size:clamp(32px,10.6cqw,61px);letter-spacing:-.055em;line-height:1.04;font-weight:300}
+.ios-weather-status{text-align:right;font-size:clamp(10px,3.05cqw,16px)}
+.ios-weather-status svg{margin-left:auto}
+.ios-weather-footer{display:flex;justify-content:space-between;border-top:1px solid #fff2;padding-top:4%;font-size:clamp(10px,3.15cqw,16px);color:#f3f5f9}
+.ios-weather-footer span{color:#bac2ce}
+.ios-clock{background:#fcfcfd;color:#101114;align-items:center;justify-content:center}
+.ios-clock svg{position:absolute;inset:4%;width:92%;height:92%}
+.ios-clock time{font-size:clamp(30px,9.9cqw,65px);font-stretch:condensed;font-weight:780;letter-spacing:-.09em;font-variant-numeric:tabular-nums;margin-right:.09em}
+.ios-calendar{background:linear-gradient(145deg,#343537,#1e1f21);flex-direction:column;justify-content:space-between;text-align:left;padding:13% 12%}
+.ios-calendar-day{font-size:clamp(32px,10.2cqw,65px);font-weight:300;line-height:1;letter-spacing:-.06em}
+.ios-calendar-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;text-align:center;font-size:clamp(8px,2.35cqw,12px);font-variant-numeric:tabular-nums}
+.ios-calendar-week b{background:#f04d55;border-radius:50%;font-weight:650}
+.ios-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:var(--row);column-gap:2%;align-items:start;justify-items:center;margin:0 -3.2%}
+.ios-app,.ios-folder{position:relative;display:flex;flex-direction:column;align-items:center;width:100%;min-width:0;background:none;border:0;padding:0}
+.ios-app:active .ios-icon,.ios-folder:active .ios-folder-tile{scale:.92}
+.ios-icon,.ios-folder-tile{width:var(--icon);height:var(--icon);border-radius:25%;position:relative;overflow:hidden;transition:scale .16s ease}
+.ios-icon{display:grid;place-items:center;background:linear-gradient(155deg,var(--tile-hi),var(--tile));color:var(--ink,#fff);box-shadow:inset 0 0 0 .6px #ffffff85,inset 0 1.4px 0 #ffffff85,0 1.5px 3px #0004}
+.ios-icon svg{width:68%;height:68%;filter:drop-shadow(0 1px 1px #0002)}
+.ios-folder-tile{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:6%;padding:13%;background:linear-gradient(145deg,#ffffff62,#c6cad437);backdrop-filter:blur(13px) saturate(140%);-webkit-backdrop-filter:blur(13px) saturate(140%);box-shadow:inset 0 0 0 1px #ffffff78,inset 0 1px 5px #fff6,0 2px 4px #0002}
+.ios-folder-tile .ios-icon{width:100%;height:100%;border-radius:25%}
+.ios-badge{position:absolute;z-index:1;top:-5px;right:calc((100% - var(--icon))/2 - 5px);background:#ff3b30;min-width:19px;height:19px;padding:1px 4px;display:grid;place-items:center;border-radius:100px;font-size:11px;font-weight:600}
+.ios-dock{position:absolute;left:3.4%;right:3.4%;bottom:clamp(8px,3.2cqw,18px);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:clamp(10px,4.2cqw,22px) 2%;border-radius:clamp(25px,8.1cqw,45px);background:linear-gradient(155deg,#e0e0e033,#17191c55);backdrop-filter:blur(25px) saturate(150%);-webkit-backdrop-filter:blur(25px) saturate(150%);box-shadow:inset 0 0 0 1px #ffffff35,inset 0 1px 1px #ffffff24}
+.ios-search{position:absolute;left:50%;translate:-50% 0;bottom:calc(var(--icon) + 9.4cqw + 22px);border:1px solid #fff3;border-radius:100px;background:#5b5d6385;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;align-items:center;gap:5px;padding:5px 10px;font-size:clamp(9px,2.65cqw,13px)!important}
+.ios-home-dialog{position:absolute;inset:0;z-index:2;display:grid;align-content:center;justify-items:center;background:#12161f54;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);padding:var(--safe-top,0px) 7% 16px}
+.ios-home-panel{width:100%;max-height:100%;overflow:auto;padding:16px 12px 10px;background:linear-gradient(135deg,#f9f9fd50,#b9bbca43);border:1px solid #ffffff62;border-radius:29px;box-shadow:0 16px 48px #14182444}
+.ios-panel-head{display:flex;align-items:center;justify-content:space-between;margin:0 4px 15px}
+.ios-panel-head h2{margin:0;font-size:21px;font-weight:650}
+.ios-panel-head button{display:grid;place-items:center;border:0;border-radius:50%;background:#ffffff40;width:30px;height:30px}
+.ios-home-panel .ios-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin:0}
+.ios-home-panel input{display:block;width:100%;margin-bottom:15px;border-radius:12px;padding:10px 12px;border:1px solid #fff5;background:#15182585;color:white;font-size:16px}
+.ios-home-panel input::placeholder{color:#fff9}
+.ios-page-turn{position:absolute;right:7%;bottom:calc(var(--icon) + 9.4cqw + 22px);font-size:12px!important;border:0;background:#2225;border-radius:100px;width:26px;height:26px}
+.ios-home-missing{padding:10px 6px;margin:0;font-size:14px}
+@media(prefers-reduced-motion:reduce){.ios-icon,.ios-folder-tile{transition:none}}
+`;
 
-    return (
-        <div className="flex flex-col mb-4 mt-5 relative animate-fade-in" style={{ color: contentColor }}>
-            {/* 顶部装饰 — 状态胶囊 + 细线 */}
-            <div className="flex items-center gap-2 mb-3 opacity-90">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
-                    style={{
-                        background: 'rgba(255,255,255,0.28)',
-                        border: '1px solid rgba(255,255,255,0.18)',
-                    }}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" style={{ boxShadow: '0 0 6px #4ade80' }} />
-                    <span className="text-[9px] font-bold tracking-[0.2em] uppercase">System Online</span>
-                </div>
-                <div className="h-[1px] flex-1 bg-gradient-to-r from-current to-transparent opacity-30" />
-                <span className="text-[9px] tracking-[0.2em] uppercase opacity-60">{yearNum}</span>
-            </div>
-
-            {/* 问候 */}
-            <div className="text-[11px] tracking-[0.25em] uppercase opacity-55 font-semibold mb-1">
-                {greeting}
-            </div>
-
-            {/* 主时钟 */}
-            <div className="flex items-end gap-4">
-                <div className="relative">
-                    <div className="text-[6.25rem] leading-[0.82] font-black tracking-tighter drop-shadow-2xl"
-                        style={{ fontFamily: `'Space Grotesk', 'SF Pro Display', sans-serif`, fontFeatureSettings: '"tnum"' }}>
-                        <span>{virtualTime.hours.toString().padStart(2, '0')}</span>
-                        <span className="opacity-35 font-thin mx-0.5 animate-pulse">:</span>
-                        <span>{virtualTime.minutes.toString().padStart(2, '0')}</span>
-                    </div>
-                    {/* 细光斑 */}
-                    <div className="absolute -top-2 -right-3 w-8 h-8 rounded-full pointer-events-none"
-                        style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.4), transparent 70%)' }} />
-                </div>
-
-                <div className="flex flex-col justify-end pb-2.5 gap-0.5">
-                    <div className="text-[10px] font-bold tracking-[0.22em] opacity-85">{dayName}</div>
-                    <div className="flex items-baseline gap-1">
-                        <div className="text-2xl font-black leading-none" style={{ fontFamily: `'Space Grotesk', sans-serif` }}>{dateNum}</div>
-                        <div className="text-[10px] font-bold tracking-[0.2em] opacity-70">{monthName}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-});
-
-// 2. Character Widget (Consumes Character Data & Messages)
-const CharacterWidget = React.memo(({ 
-    char, 
-    unreadCount, 
-    lastMessage, 
-    onClick, 
-    contentColor 
-}: { 
-    char: CharacterProfile | null, 
-    unreadCount: number, 
-    lastMessage: string, 
-    onClick: () => void,
-    contentColor: string
-}) => {
-    const { theme } = useOS();
-    const acnh = theme.skin === 'animalcrossing'; // 动森彩蛋：会"说话"的村民卡
-
-    // 动森：村民头像 + AC 对话气泡（显示最近消息，点开聊天）
-    if (acnh) {
-        return (
-            <div className="mb-4 animate-fade-in" onClick={onClick}>
-                <div className="flex items-end gap-2.5 cursor-pointer active:scale-[0.98] transition-transform">
-                    {/* 村民头像（圆角方块 + 白边） */}
-                    <div className="relative w-[60px] h-[60px] shrink-0 rounded-[26%] overflow-hidden bg-[#e8e2d6]"
-                        style={{ border: '3px solid #ffffff', boxShadow: '0 4px 10px -2px rgba(61,52,40,0.28)' }}>
-                        {char?.avatar
-                            ? <img src={char.avatar} className="w-full h-full object-cover" alt="char" loading="lazy" />
-                            : <div className="w-full h-full flex items-center justify-center text-2xl">🍃</div>}
-                        {unreadCount > 0 && (
-                            <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#fc736d] rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                                style={{ border: '2px solid #fff' }}>
-                                {unreadCount > 9 ? '9+' : unreadCount}
-                            </div>
-                        )}
-                    </div>
-                    {/* AC 对话气泡 */}
-                    <div className="relative flex-1 min-w-0 mb-1">
-                        <div className="absolute -left-1.5 bottom-3 w-3 h-3 rotate-45"
-                            style={{ background: '#FFFBF2', borderLeft: '2px solid #ece0c8', borderBottom: '2px solid #ece0c8' }} />
-                        <div className="relative rounded-2xl px-3.5 py-2.5"
-                            style={{ background: '#FFFBF2', border: '2px solid #ece0c8', boxShadow: '0 4px 12px -5px rgba(120,90,40,0.25)' }}>
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className="text-[13px] font-extrabold truncate" style={{ color: '#725d42' }}>{char?.name || 'Resident'}</span>
-                                <span className="text-[11px] leading-none">{unreadCount > 0 ? '💬' : '🍃'}</span>
-                            </div>
-                            <div className="text-[11px] leading-snug line-clamp-2" style={{ color: '#9f8b68' }}>{lastMessage}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="mb-3 group animate-fade-in">
-             <div
-                className="relative h-24 w-full overflow-hidden rounded-3xl cursor-pointer transition-transform duration-300 active:scale-[0.98]"
-                onClick={onClick}
-                style={acnh ? {
-                    background: 'rgb(247,243,223)',
-                    border: '2px solid #e8e2d6',
-                    boxShadow: '0 8px 24px 0 rgba(61,52,40,0.14)',
-                } : {
-                    background: 'rgba(255,255,255,0.08)',
-                    backdropFilter: 'blur(24px) saturate(1.4)',
-                    WebkitBackdropFilter: 'blur(24px) saturate(1.4)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.08)',
-                }}
-             >
-                 {/* 背景虚化角色头像（动森模式下省略，避免糊在奶油底上） */}
-                 {!acnh && char?.avatar && (
-                     <div className="absolute inset-0 opacity-25 pointer-events-none"
-                         style={{
-                             backgroundImage: `url(${char.avatar})`,
-                             backgroundSize: 'cover',
-                             backgroundPosition: 'center',
-                             filter: 'blur(30px) saturate(1.6)',
-                             transform: 'scale(1.3)',
-                         }} />
-                 )}
-
-                 <div className="relative flex items-center p-3 gap-3 h-full">
-                     {/* 头像 */}
-                     <div className="w-[68px] h-[68px] shrink-0 rounded-2xl overflow-hidden relative bg-slate-800"
-                         style={{
-                             border: acnh ? '2px solid #e8e2d6' : '1.5px solid rgba(255,255,255,0.25)',
-                             boxShadow: acnh ? '0 4px 12px -4px rgba(61,52,40,0.25)' : '0 4px 14px rgba(0,0,0,0.25)',
-                         }}>
-                         {char ? (
-                             <img src={char.avatar} className="w-full h-full object-cover" alt="char" loading="lazy" />
-                         ) : <div className="w-full h-full bg-white/10 animate-pulse" />}
-                         {unreadCount > 0 ? (
-                            <div className="absolute bottom-0.5 right-0.5 min-w-[16px] h-[16px] px-1 bg-red-500 rounded-full border border-white/30 shadow-sm flex items-center justify-center text-[9px] font-bold text-white">
-                                {unreadCount > 9 ? '9+' : unreadCount}
-                            </div>
-                         ) : (
-                            <div className="absolute bottom-1 right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white/30" style={{ boxShadow: '0 0 6px #4ade80' }}></div>
-                         )}
-                     </div>
-
-                     {/* 文本 */}
-                     <div className="flex-1 min-w-0 flex flex-col justify-center gap-1" style={{ color: contentColor }}>
-                         <div className="flex items-center gap-1.5">
-                             <h3 className="text-[15px] font-bold tracking-wide drop-shadow-md truncate">
-                                 {char?.name || 'NO SIGNAL'}
-                             </h3>
-                             {unreadCount > 0 ? (
-                                 <div className="px-1.5 py-px rounded-full text-[8px] font-bold uppercase tracking-[0.15em]"
-                                     style={{ background: 'rgba(239,68,68,0.9)', color: 'white' }}>NEW</div>
-                             ) : (
-                                 <div className="px-1.5 py-px rounded-full text-[8px] font-bold uppercase tracking-[0.15em]"
-                                     style={acnh ? { background: '#7cba4c', color: 'white' } : { background: 'rgba(255,255,255,0.18)' }}>Online</div>
-                             )}
-                         </div>
-                         <div className="text-xs line-clamp-2 font-medium leading-relaxed opacity-85">
-                            <span className="opacity-50 mr-1 text-[10px]">▶</span>
-                            {lastMessage}
-                         </div>
-                     </div>
-                 </div>
-             </div>
-        </div>
-    );
-});
-
-// 3. Grid Page Component
-const AppGridPage = React.memo(({
-    apps,
-    openApp,
-    acnh = false,
-}: {
-    apps: typeof INSTALLED_APPS,
-    openApp: (id: AppID) => void,
-    acnh?: boolean,
-}) => {
-    return (
-        <div className={`grid place-items-center animate-fade-in relative ${acnh ? 'grid-cols-4 gap-y-6 gap-x-2' : 'grid-cols-4 gap-y-6 gap-x-2'}`}>
-             {apps.map(app => (
-                 <div
-                    key={app.id}
-                    className="relative transition-transform duration-200 active:scale-95"
-                 >
-                     <AppIcon
-                        app={app}
-                        onClick={() => openApp(app.id)}
-                        size="md"
-                     />
-                 </div>
-             ))}
-        </div>
-    );
-});
-
-// 3b. Small 2x2 app grid for pinwheel cells
-const AppQuadGrid = React.memo(({ apps, openApp }: { apps: typeof INSTALLED_APPS, openApp: (id: AppID) => void }) => {
-    return (
-        <div className="w-full h-full grid grid-cols-2 grid-rows-2 place-items-center gap-x-2 gap-y-3">
-            {apps.map(app => (
-                <div key={app.id} className="relative transition-transform duration-200 active:scale-95">
-                    <AppIcon app={app} onClick={() => openApp(app.id)} />
-                </div>
-            ))}
-        </div>
-    );
-});
-
-// 3c. Square image slot for pinwheel (bottom-right)
-const DesktopSquareImage = React.memo(({ image, contentColor, onClick, acnh = false }: {
-    image?: string,
-    contentColor: string,
-    onClick: () => void,
-    acnh?: boolean,
-}) => {
-    return (
-        <div
-            onClick={onClick}
-            className="relative w-full h-full rounded-[1.75rem] overflow-hidden cursor-pointer animate-fade-in transition-transform active:scale-[0.98]"
-            style={acnh ? {
-                background: image ? 'rgb(247,243,223)' : 'rgb(247,243,223)',
-                border: '2px solid #e8e2d6',
-                boxShadow: '0 6px 18px rgba(61,52,40,0.12)',
-                color: contentColor,
-            } : {
-                background: image ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.28)',
-                border: '1px solid rgba(255,255,255,0.18)',
-                boxShadow: '0 8px 30px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.07)',
-                color: contentColor,
-            }}
-        >
-            {image ? (
-                <img src={image} alt="" className="w-full h-full object-cover" loading="lazy" />
-            ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-3 text-center">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center"
-                        style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.16)' }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4 opacity-70">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                        </svg>
-                    </div>
-                    <div className="text-[8.5px] uppercase font-bold tracking-[0.22em] opacity-55">Add Image</div>
-                    <div className="text-[8.5px] opacity-40 leading-tight">从 外观 · 启动器组件<br/>设置一张方图</div>
-                </div>
-            )}
-        </div>
-    );
-});
-
-const CALENDAR_WEEKDAYS = [
-    { key: 'sun', label: 'S' },
-    { key: 'mon', label: 'M' },
-    { key: 'tue', label: 'T' },
-    { key: 'wed', label: 'W' },
-    { key: 'thu', label: 'T' },
-    { key: 'fri', label: 'F' },
-    { key: 'sat', label: 'S' },
-] as const;
-
-// 4. Widget Page Component (Calendar + Events)
-const WidgetsPage = React.memo(({ contentColor, openApp, anniversaries, characters, acnh = false }: any) => {
-    // 动森：奶油卡片样式（替代暗色玻璃）
-    const acCard = acnh ? { background: 'rgb(247,243,223)', border: '2px solid #e8e2d6', boxShadow: '0 6px 18px rgba(61,52,40,0.12)' } : undefined;
-    const acDot = acnh ? '#6fba2c' : undefined;
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    const monthName = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][currentMonth];
-    
-    const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
-    const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
-    
-    const totalDays = getDaysInMonth(currentYear, currentMonth);
-    const startOffset = getFirstDayOfMonth(currentYear, currentMonth);
-    
-    const calendarDays = Array.from({ length: totalDays }, (_, i) => i + 1);
-    const paddingDays = Array.from({ length: startOffset }, () => null);
-
-    // --- Upcoming events: only today + future, soonest first (non-mutating), paginated ---
-    const todayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const upcomingEvents = useMemo(
-        () => [...(anniversaries as any[])]
-            .filter((a: any) => a.date >= todayStr)
-            .sort((a: any, b: any) => a.date.localeCompare(b.date)),
-        [anniversaries, todayStr]
-    );
-    const EVENTS_PER_PAGE = 4;
-    const eventPageCount = Math.max(1, Math.ceil(upcomingEvents.length / EVENTS_PER_PAGE));
-    const [eventPage, setEventPage] = useState(0);
-    // Clamp the page if the list shrinks (e.g. an event passes / is removed)
-    useEffect(() => {
-        if (eventPage > eventPageCount - 1) setEventPage(eventPageCount - 1);
-    }, [eventPageCount, eventPage]);
-    const pagedEvents = upcomingEvents.slice(eventPage * EVENTS_PER_PAGE, eventPage * EVENTS_PER_PAGE + EVENTS_PER_PAGE);
-
-    return (
-        <div className="w-full flex-shrink-0 snap-center snap-always flex flex-col px-6 pt-24 pb-8 space-y-6 h-full overflow-y-auto no-scrollbar">
-              <div className={`rounded-3xl p-6 ${acnh ? 'shadow-sm' : 'bg-white/25 border border-white/25 shadow-xl'}`} style={acCard}>
-                  <div className="flex justify-between items-center mb-4" style={{ color: contentColor }}>
-                      <h3 className="text-xl font-bold tracking-widest">{monthName} {currentYear}</h3>
-                      <div onClick={() => openApp('schedule')} className={`p-2 rounded-full cursor-pointer transition-colors ${acnh ? 'bg-[#82D5BB]/30 hover:bg-[#82D5BB]/50' : 'bg-white/20 hover:bg-white/40'}`}>
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                      </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-2">
-                      {CALENDAR_WEEKDAYS.map(day => <div key={day.key} className="text-[10px] font-bold opacity-40" style={{ color: contentColor }}>{day.label}</div>)}
-                  </div>
-                  
-                  <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center">
-                      {paddingDays.map((_, i) => <div key={`pad-${i}`} />)}
-                      {calendarDays.map(day => {
-                          const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                          const isToday = day === now.getDate();
-                          const hasEvent = anniversaries.some((a: any) => a.date === dateStr);
-                          
-                          return (
-                              <div key={day} className="flex flex-col items-center justify-center h-8 relative">
-                                  <div
-                                    className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium ${isToday ? (acnh ? 'text-white font-bold' : 'bg-white text-black font-bold shadow-lg') : 'opacity-80'}`}
-                                    style={isToday ? (acnh ? { background: '#19c8b9' } : {}) : { color: contentColor }}
-                                  >
-                                      {day}
-                                  </div>
-                                  {hasEvent && <div className="w-1.5 h-1.5 rounded-full absolute bottom-0 shadow-sm border border-black/20" style={{ background: acDot || '#c084fc' }}></div>}
-                              </div>
-                          );
-                      })}
-                  </div>
-              </div>
-
-              <div className={`rounded-3xl p-5 flex flex-col flex-1 min-h-[200px] ${acnh ? 'shadow-sm' : 'bg-white/25 border border-white/25 shadow-xl'}`} style={acCard}>
-                  <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xs font-bold opacity-60 uppercase tracking-widest flex items-center gap-2" style={{ color: contentColor }}>
-                          <span className="w-2 h-2 rounded-full" style={{ background: acDot || '#c084fc' }}></span> Upcoming Events
-                      </h3>
-                      {eventPageCount > 1 && (
-                          <div className="flex items-center gap-2 shrink-0" style={{ color: contentColor }}>
-                              <button
-                                  onClick={(e) => { e.stopPropagation(); setEventPage(p => Math.max(0, p - 1)); }}
-                                  disabled={eventPage === 0}
-                                  className="w-6 h-6 rounded-full bg-white/15 flex items-center justify-center disabled:opacity-25 hover:bg-white/30 transition-colors active:scale-90"
-                                  aria-label="Previous events"
-                              >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-                              </button>
-                              <span className="text-[10px] font-mono opacity-60 tabular-nums">{eventPage + 1}/{eventPageCount}</span>
-                              <button
-                                  onClick={(e) => { e.stopPropagation(); setEventPage(p => Math.min(eventPageCount - 1, p + 1)); }}
-                                  disabled={eventPage >= eventPageCount - 1}
-                                  className="w-6 h-6 rounded-full bg-white/15 flex items-center justify-center disabled:opacity-25 hover:bg-white/30 transition-colors active:scale-90"
-                                  aria-label="Next events"
-                              >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
-                              </button>
-                          </div>
-                      )}
-                  </div>
-                  <div className="space-y-3">
-                      {upcomingEvents.length > 0 ? pagedEvents.map((anni: any) => (
-                          <div key={anni.id} className={`flex items-center gap-3 p-3 rounded-xl ${acnh ? 'bg-[#efe7d4] border border-[#e0d6c0]' : 'bg-white/5 border border-white/10'}`}>
-                              <div className={`w-10 h-10 shrink-0 rounded-lg flex flex-col items-center justify-center ${acnh ? 'bg-[#82D5BB] text-white border border-[#6cc0a6]' : 'bg-purple-500/20 text-purple-200 border border-purple-500/30'}`}>
-                                  <span className="text-[9px] opacity-70">{anni.date.split('-')[1]}</span>
-                                  <span className="text-sm font-bold leading-none">{anni.date.split('-')[2]}</span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-bold truncate" style={{ color: contentColor }}>{anni.title}</div>
-                                  <div className="text-[10px] opacity-50 truncate" style={{ color: contentColor }}>{characters.find((c: any) => c.id === anni.charId)?.name || 'Unknown'}</div>
-                              </div>
-                          </div>
-                      )) : (
-                          <div className="text-center opacity-30 text-xs py-8" style={{ color: contentColor }}>No upcoming events</div>
-                      )}
-                  </div>
-              </div>
-        </div>
-    );
-});
-
-// --- Persist scroll page across remounts (e.g. returning from apps) ---
-let _lastPageIndex = 0;
-
-// --- Main Launcher ---
-
-const Launcher: React.FC = () => {
-  const { openApp, characters, activeCharacterId, theme, lastMsgTimestamp, isDataLoaded, unreadMessages } = useOS();
-
-  // Local state for widget data to prevent context trashing
-  const [widgetChar, setWidgetChar] = useState<CharacterProfile | null>(null);
-  const [lastMessage, setLastMessage] = useState<string>('');
-  const [anniversaries, setAnniversaries] = useState<Anniversary[]>([]);
-  const [scheduleData, setScheduleData] = useState<DailySchedule | null>(null);
-  const [scheduleCharId, setScheduleCharId] = useState<string | null>(null);
-  const [scheduleViewerOpen, setScheduleViewerOpen] = useState(false);
-
-  const [activePageIndex, setActivePageIndex] = useState(_lastPageIndex);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  // Mouse Drag Logic refs
-  const isDragging = useRef(false);
-  const startX = useRef(0);
-  const scrollLeftRef = useRef(0);
-  const dragMoved = useRef(0);
-
-  // Pagination Logic
-  // 跟随 DevDebug 可用性：prod 用户在设置页连点 5 下解锁后，CharCreatorDev 立刻出现；
-  // 点「关闭」/ 刷新（prod 自动失效）也立刻消失。useMemo deps 没列 devDebugVisible
-  // 会让它锁在 mount 时的初值。
-  const [devDebugVisible, setDevDebugVisible] = useState(() => isDevDebugAvailable());
-  useEffect(() => subscribeDevDebugAvailability(setDevDebugVisible), []);
-  const gridApps = useMemo(() => {
-    return INSTALLED_APPS.filter(app =>
-      !DOCK_APPS.includes(app.id)
-      // 「捏脸·开发」仅在开发模式（右下角开发徽标可见或手动解锁时）显示
-      && (app.id !== AppID.CharCreatorDev || devDebugVisible)
-    );
-  }, [devDebugVisible]);
-
-  const dockAppsConfig = useMemo(() => 
-    DOCK_APPS.map(id => INSTALLED_APPS.find(app => app.id === id)).filter(Boolean) as typeof INSTALLED_APPS,
-    []
-  );
-
-  // Split apps into pages of 8 (4 cols x 2 rows fit comfortably below widget)
-  // Pages: 0 = clock+chat+music+grid (original), 1 = pinwheel, 2 = widget images + grid,
-  //        3+ = plain grid. Pad to at least 3 slots so the pinwheel/widget pages always exist.
-  const APPS_PER_PAGE = 8;
-  const appPages = useMemo(() => {
-      const pages: typeof INSTALLED_APPS[] = [];
-      for (let i = 0; i < gridApps.length; i += APPS_PER_PAGE) {
-          pages.push(gridApps.slice(i, i + APPS_PER_PAGE));
-      }
-      while (pages.length < 3) pages.push([]);
-      return pages;
-  }, [gridApps]);
-
-  // Page 2 (pinwheel) uses appPages[1]: split into two 2x2 quads
-  const page2Apps = appPages[1] || [];
-  const page2QuadA = useMemo(() => page2Apps.slice(0, 4), [page2Apps]);
-  const page2QuadB = useMemo(() => page2Apps.slice(4, 8), [page2Apps]);
-
-  // Total pages = App Pages + 1 Widget Page
-  const totalPages = appPages.length + 1;
-
-  useEffect(() => {
-      const loadData = async () => {
-          // SAFEGUARD: If characters array is empty, reset widget char
-          if (!characters || characters.length === 0) {
-              setWidgetChar(null);
-              setLastMessage('No Character Connected');
-              setAnniversaries([]);
-              return;
-          }
-
-          const targetChar = characters.find(c => c.id === activeCharacterId) || characters[0];
-          setWidgetChar(targetChar);
-
-          try {
-              const [msgs, annis] = await Promise.all([
-                  DB.getMessagesByCharId(targetChar.id),
-                  DB.getAllAnniversaries()
-              ]);
-              
-              if (msgs.length > 0) {
-                  const visibleMsgs = msgs.filter(m => m.role !== 'system');
-                  if (visibleMsgs.length > 0) {
-                      const last = visibleMsgs[visibleMsgs.length - 1];
-                      const cleanContent = last.content.replace(/\[.*?\]/g, '').trim();
-                      setLastMessage(cleanContent || (last.type === 'image' ? '[图片]' : '[消息]'));
-                  } else {
-                      setLastMessage(targetChar.description || "System Ready.");
-                  }
-              } else {
-                  setLastMessage(targetChar.description || "System Ready.");
-              }
-              setAnniversaries(annis);
-          } catch (e) {
-              console.error(e);
-          }
-      };
-      
-      if (isDataLoaded) {
-          loadData();
-      }
-  }, [activeCharacterId, lastMsgTimestamp, isDataLoaded, characters]); // Trigger on characters change
-
-  // Schedule widget data loading (shown below SpecialMoments icon)
-  const scheduleChar = useMemo(() => {
-      if (!characters || characters.length === 0) return null;
-      if (scheduleCharId) return characters.find(c => c.id === scheduleCharId) || characters[0];
-      return characters.find(c => c.id === activeCharacterId) || characters[0];
-  }, [characters, scheduleCharId, activeCharacterId]);
-
-  useEffect(() => {
-      if (!scheduleChar || !isDataLoaded) return;
-      const today = new Date().toISOString().split('T')[0];
-      DB.getDailySchedule(scheduleChar.id, today).then(s => setScheduleData(s)).catch(() => {});
-  }, [scheduleChar, isDataLoaded]);
-
-  // Restore scroll position BEFORE paint to avoid visible flash/slide
-  useLayoutEffect(() => {
-      const el = scrollContainerRef.current;
-      if (el && _lastPageIndex > 0) {
-          // Temporarily disable smooth scroll so jump is instant
-          el.style.scrollBehavior = 'auto';
-          el.scrollLeft = el.clientWidth * _lastPageIndex;
-          // Re-enable on next frame
-          requestAnimationFrame(() => { el.style.scrollBehavior = 'smooth'; });
-      }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleScroll = () => {
-      if (scrollContainerRef.current) {
-          const width = scrollContainerRef.current.clientWidth;
-          const scrollLeft = scrollContainerRef.current.scrollLeft;
-          const index = Math.round(scrollLeft / width);
-          setActivePageIndex(index);
-          _lastPageIndex = index; // Persist across remounts
-      }
-  };
-
-  // --- Mouse Drag Handlers ---
-  const handleMouseDown = (e: React.MouseEvent) => {
-      if (!scrollContainerRef.current) return;
-      isDragging.current = true;
-      dragMoved.current = 0;
-      startX.current = e.pageX - scrollContainerRef.current.offsetLeft;
-      scrollLeftRef.current = scrollContainerRef.current.scrollLeft;
-      
-      // Disable snap and smooth scroll for direct control
-      scrollContainerRef.current.style.scrollBehavior = 'auto';
-      scrollContainerRef.current.style.scrollSnapType = 'none';
-      scrollContainerRef.current.style.cursor = 'grabbing';
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-      if (!isDragging.current || !scrollContainerRef.current) return;
-      e.preventDefault();
-      const x = e.pageX - scrollContainerRef.current.offsetLeft;
-      const walk = (x - startX.current);
-      scrollContainerRef.current.scrollLeft = scrollLeftRef.current - walk;
-      
-      dragMoved.current = Math.abs(x - (startX.current + scrollContainerRef.current.offsetLeft)); 
-  };
-
-  const handleMouseUp = () => {
-      if (!isDragging.current || !scrollContainerRef.current) return;
-      isDragging.current = false;
-      
-      // Restore styles
-      scrollContainerRef.current.style.scrollBehavior = 'smooth';
-      scrollContainerRef.current.style.scrollSnapType = 'x mandatory';
-      scrollContainerRef.current.style.cursor = 'grab';
-  };
-
-  const handleMouseLeave = () => {
-      if (isDragging.current) handleMouseUp();
-  };
-
-  const handleClickCapture = (e: React.MouseEvent) => {
-      if (dragMoved.current > 5) {
-          e.stopPropagation();
-          e.preventDefault();
-      }
-  };
-
-  const contentColor = theme.contentColor || '#ffffff';
-  const acnh = theme.skin === 'animalcrossing'; // 动森彩蛋：Dock 换奶油木质底
-  // 已迁移 App 外壳已收回到可见 viewport 底边，dock 仅需自留视觉间距，无需再 + safe-bottom
-  // （否则会比 home 条上方多让 34px，dock 看起来悬空）。
-  const launcherBottomInset = '1.25rem';
-  
-  const totalUnread = Object.values(unreadMessages).reduce((a, b) => a + b, 0);
-  const widgetUnread = widgetChar && unreadMessages[widgetChar.id] ? unreadMessages[widgetChar.id] : 0;
-
-  return (
-    <div className="h-full w-full flex flex-col relative z-10 overflow-hidden font-sans select-none">
-      
-      {/* Visual Elements (Decorative Background - Static, low-cost gradients instead of blur) */}
-      {/* 动森模式跳过：这层冷蓝光斑会污染奶油底 */}
-      {!acnh && (
-      <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%)' }}></div>
-          <div className="absolute -bottom-20 -left-20 w-80 h-80 rounded-full" style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%)' }}></div>
-      </div>
-      )}
-
-      {/* Scrollable Content Layer */}
-      {/* UPDATE: Added snap-always to children to ensure one-page-at-a-time scrolling on mobile swipe */}
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        onClickCapture={handleClickCapture}
-        className="flex-1 flex overflow-x-auto snap-x snap-mandatory no-scrollbar cursor-grab active:cursor-grabbing"
-        style={{
-            scrollBehavior: 'smooth',
-            overscrollBehaviorX: 'contain',
-            overscrollBehaviorY: 'none',
-            touchAction: 'pan-x pan-y',
-            willChange: 'scroll-position',
-            contain: 'layout paint',
-            transform: 'translateZ(0)',
-            WebkitOverflowScrolling: 'touch',
-        }}
-      >
-          {/* Render App Pages */}
-          {appPages.map((pageApps, idx) => (
-              <div
-                key={idx}
-                className="w-full flex-shrink-0 snap-center snap-always flex flex-col px-6 pt-12 pb-8 h-full"
-                style={{ contentVisibility: 'auto', contain: 'layout paint', transform: 'translateZ(0)' }}
-              >
-                  {idx === 0 ? (
-                      // Page 1 (original): Clock + Chat + 4x2 App Grid
-                      <>
-                        <DesktopClock />
-                        <CharacterWidget
-                            char={widgetChar}
-                            unreadCount={widgetUnread}
-                            lastMessage={lastMessage}
-                            onClick={() => openApp(AppID.Chat)}
-                            contentColor={contentColor}
-                        />
-                        <div className="flex-1">
-                            <AppGridPage apps={pageApps} openApp={openApp} acnh={acnh} />
-                        </div>
-                      </>
-                  ) : idx === 1 ? (
-                      // Page 2: Schedule 4x2 widget on top + Pinwheel (Music / 2x2 icons / 2x2 icons / Image) below
-                      <div className="flex-1 min-h-0 w-full flex flex-col gap-5 justify-center">
-                          {scheduleChar && (
-                              <ScheduleHomeWidget
-                                  schedule={scheduleData}
-                                  character={scheduleChar}
-                                  contentColor={contentColor}
-                                  onOpen={() => setScheduleViewerOpen(true)}
-                                  acnh={acnh}
-                              />
-                          )}
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-5 w-full">
-                              <div className="aspect-square min-w-0">
-                                  <NowPlayingSquareWidget contentColor={contentColor} />
-                              </div>
-                              <div className="aspect-square min-w-0">
-                                  <AppQuadGrid apps={page2QuadA} openApp={openApp} />
-                              </div>
-                              <div className="aspect-square min-w-0">
-                                  <AppQuadGrid apps={page2QuadB} openApp={openApp} />
-                              </div>
-                              <div className="aspect-square min-w-0">
-                                  <DesktopSquareImage
-                                      image={theme.launcherWidgets?.['dsq']}
-                                      contentColor={contentColor}
-                                      onClick={() => openApp(AppID.Appearance)}
-                                      acnh={acnh}
-                                  />
-                              </div>
-                          </div>
-                      </div>
-                  ) : (
-                      // Page 3+: Widget Images (idx===2 only) + Free Decorations + Apps
-                      <div className="pt-10 flex-1 flex flex-col relative">
-                          {idx === 2 && (() => {
-                            const raw = theme.launcherWidgets || {};
-                            const w = { ...raw };
-                            const hasAny = w['tl'] || w['tr'] || w['wide'];
-                            const hasTopRow = w['tl'] || w['tr'];
-                            return (
-                              <>
-                                {hasAny && (
-                                  <div className="mb-3 space-y-2 relative z-10">
-                                    {hasTopRow && (
-                                      <div className="flex gap-2">
-                                        {['tl', 'tr'].map(key => w[key] ? (
-                                          <div key={key} className="flex-1 aspect-square rounded-2xl overflow-hidden shadow-md border border-white/20">
-                                            <img src={w[key]} className="w-full h-full object-cover" alt="" loading="lazy" />
-                                          </div>
-                                        ) : <div key={key} className="flex-1"></div>)}
-                                      </div>
-                                    )}
-                                    {w['wide'] && (
-                                      <div className="w-full h-32 rounded-2xl overflow-hidden shadow-md border border-white/20">
-                                        <img src={w['wide']} className="w-full h-full object-cover" alt="" loading="lazy" />
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                                {/* Free-positioned Desktop Decorations (z-20 to float above widgets z-10) */}
-                                {theme.desktopDecorations && theme.desktopDecorations.length > 0 && (
-                                  <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
-                                    {theme.desktopDecorations.map(deco => (
-                                      <img
-                                        key={deco.id}
-                                        src={deco.content}
-                                        alt=""
-                                        loading="lazy"
-                                        className="absolute w-16 h-16 object-contain select-none"
-                                        style={{
-                                          left: `${deco.x}%`,
-                                          top: `${deco.y}%`,
-                                          transform: `translate(-50%, -50%) scale(${deco.scale}) rotate(${deco.rotation}deg)${deco.flip ? ' scaleX(-1)' : ''}`,
-                                          opacity: deco.opacity,
-                                          zIndex: deco.zIndex,
-                                          filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.15))',
-                                        }}
-                                      />
-                                    ))}
-                                  </div>
-                                )}
-                              </>
-                            );
-                          })()}
-
-                          <AppGridPage
-                                apps={pageApps}
-                                openApp={openApp}
-                                acnh={acnh}
-                          />
-                          <div className="flex-1"></div>
-                      </div>
-                  )}
-              </div>
-          ))}
-
-          {/* Final Page: Widgets */}
-          <WidgetsPage
-            contentColor={contentColor}
-            openApp={openApp}
-            anniversaries={anniversaries}
-            characters={characters}
-            acnh={acnh}
-          />
-
-      </div>
-
-      {/* Page Indicators */}
-      <div
-          className="absolute left-0 w-full flex justify-center gap-2 pointer-events-none z-20"
-          style={{ bottom: `calc(${launcherBottomInset} + 5.5rem)` }}
-      >
-          {Array.from({ length: totalPages }).map((_, i) => (
-              <div 
-                key={i}
-                className={`h-1.5 rounded-full transition-all duration-300 ${activePageIndex === i ? 'w-4 opacity-100' : 'w-1.5 opacity-40'}`} 
-                style={{ backgroundColor: contentColor }}
-              ></div>
-          ))}
-      </div>
-
-      {/* Floating Dock - Updated Margin and Safe Area handling */}
-      <div
-           className="mt-auto flex justify-center w-full px-4 relative z-30"
-           style={{ paddingBottom: launcherBottomInset }}
-      >
-           <div
-             className={`rounded-[1.75rem] px-4 py-3 flex gap-3 sm:gap-6 items-center mx-auto max-w-full justify-between overflow-x-auto no-scrollbar transform-gpu ${acnh ? '' : 'bg-white/30 border border-white/25 shadow-[0_8px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.08)]'}`}
-             style={acnh ? { background: 'transparent' } : undefined}
-           >
-               {dockAppsConfig.map(app => (
-                   <div key={app.id} className="relative">
-                        <AppIcon app={app} onClick={() => openApp(app.id)} variant="dock" size="md" />
-                        {app.id === 'chat' && totalUnread > 0 && (
-                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-[9px] flex items-center justify-center border-2 border-white/20 shadow-sm font-bold pointer-events-none animate-pop-in">
-                                {totalUnread > 9 ? '9+' : totalUnread}
-                            </div>
-                        )}
-                   </div>
-               ))}
-           </div>
-      </div>
-
-      <ScheduleFullscreenViewer
-          open={scheduleViewerOpen}
-          onClose={() => setScheduleViewerOpen(false)}
-          characters={characters}
-          activeCharId={scheduleChar?.id || null}
-          onSwitchCharacter={(id) => setScheduleCharId(id)}
-          schedule={scheduleData}
-          activeCharacter={scheduleChar}
-          contentColor={contentColor}
-      />
-
-    </div>
-  );
+const IOS_TILE_COLORS: Record<string, [string, string]> = {
+    green: ['#48ef72','#0ab647'],
+    emerald: ['#51eb78','#08b84a'],
+    violet: ['#8279ff','#5148de'],
+    indigo: ['#7483ff','#4052d2'],
+    rose: ['#ff567e','#ed003d'],
+    pink: ['#ff7b9d','#e72067'],
+    red: ['#ff5d57','#f10f2d'],
+    blue: ['#5fc5ff','#1775eb'],
+    slate: ['#c3c6cb','#5e636d'],
+    amber: ['#ffd85e','#ff9d16'],
+    orange: ['#ffb252','#f37527'],
+    lime: ['#beec68','#63af39'],
+    cyan: ['#72deff','#00a4cc'],
+    purple: ['#c18bff','#8441db'],
+    fuchsia: ['#f97bf2','#b42dc5'],
 };
 
-export default Launcher;
+function IOSIcon({ id }: { id: AppID }) {
+    const app = IOS_ICONS.get(id);
+    const Icon = Icons[app?.icon || 'Settings'];
+    const [highlight, base] =
+        IOS_TILE_COLORS[app?.color || 'slate'] || IOS_TILE_COLORS.slate;
+
+    const tile = {
+        '--tile-hi': highlight,
+        '--tile': base,
+    } as React.CSSProperties;
+
+    if (id === AppID.GroupChat) {
+        Object.assign(tile, {
+            '--tile-hi': '#ffef52',
+            '--tile': '#ffce00',
+            '--ink': '#3b2c22',
+        });
+    }
+
+    if (id === AppID.Gallery) {
+        Object.assign(tile, {
+            '--tile-hi': '#fff',
+            '--tile': '#d0d1d7',
+            '--ink': '#4d4f57',
+        });
+    }
+
+    if (id === AppID.Browser) {
+        Object.assign(tile, {
+            '--tile-hi': '#fff',
+            '--tile': '#e7eaf0',
+        });
+    }
+
+    return (
+        <span className="ios-icon" style={tile} aria-hidden="true">
+            {id === AppID.Browser ? (
+                <svg viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="49" fill="#168cf2"/>
+                    {Array.from({ length: 36 }, (_, i) => (
+                        <path
+                            key={i}
+                            d="M50 5v5"
+                            stroke="white"
+                            strokeWidth="1.35"
+                            transform={`rotate(${i * 10} 50 50)`}
+                        />
+                    ))}
+                    <path d="m77 23-18 36-18-18z" fill="#ff3b30"/>
+                    <path d="m23 77 18-36 18 18z" fill="white"/>
+                </svg>
+            ) : id === AppID.Chat || id === AppID.GroupChat ? (
+                <svg viewBox="0 0 64 64" fill="currentColor">
+                    <path d="M32 8c-15 0-27 10-27 23 0 8 4 14 10 18l-3 9 11-6c3 1 6 1 9 1 15 0 27-10 27-22S47 8 32 8Z"/>
+                    {id === AppID.GroupChat && (
+                        <text
+                            x="32"
+                            y="36"
+                            fill="#ffdf20"
+                            textAnchor="middle"
+                            fontSize="15"
+                            fontWeight="800"
+                        >
+                            TALK
+                        </text>
+                    )}
+                </svg>
+            ) : (
+                <Icon />
+            )}
+        </span>
+    );
+}
+
+function IOSClockWidget({
+    hours,
+    minutes,
+}: {
+    hours: number;
+    minutes: number;
+}) {
+    const clock = [hours, minutes]
+        .map(number => String(number).padStart(2, '0'))
+        .join(':');
+
+    return (
+        <div className="ios-widget-wrap">
+            <div className="ios-widget ios-clock">
+                <svg viewBox="0 0 160 160" aria-hidden="true">
+                    {Array.from({ length: 60 }, (_, i) => (
+                        <line
+                            key={i}
+                            x1="80"
+                            x2="80"
+                            y1="3"
+                            y2={i % 5 === 0 ? 10 : 8}
+                            stroke="#19191d"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            opacity={0.25 + (i / 60) * 0.7}
+                            transform={`rotate(${i * 6} 80 80)`}
+                        />
+                    ))}
+                </svg>
+                <time>{clock}</time>
+            </div>
+            <span className="ios-label">时钟</span>
+        </div>
+    );
+}
+
+function IOSCalendarWidget() {
+    const now = new Date();
+
+    const days = Array.from(
+        { length: 7 },
+        (_, i) =>
+            new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate() - ((now.getDay() + 6) % 7) + i,
+            ),
+    );
+
+    return (
+        <div className="ios-widget-wrap">
+            <div className="ios-widget ios-calendar">
+                <span>{now.getMonth() + 1}月</span>
+                <span className="ios-calendar-day">{now.getDate()}</span>
+
+                <div className="ios-calendar-week">
+                    {days.map(day =>
+                        day.getDate() === now.getDate() ? (
+                            <b key={day.toISOString()}>{day.getDate()}</b>
+                        ) : (
+                            <span key={day.toISOString()}>{day.getDate()}</span>
+                        ),
+                    )}
+                </div>
+            </div>
+
+            <span className="ios-label">日历</span>
+        </div>
+    );
+}
+
+function IOSHome() {
+    const {
+        openApp,
+        unreadMessages,
+        virtualTime,
+        realtimeConfig,
+        theme,
+    } = useOS();
+
+    const [folder, setFolder] =
+        useState<(typeof IOS_FOLDERS)[number] | null>(null);
+
+    const [search, setSearch] = useState(false);
+    const [query, setQuery] = useState('');
+    const [page, setPage] = useState(0);
+    const [weather, setWeather] = useState<WeatherData | null>(null);
+
+    const pageRef = useRef<HTMLDivElement>(null);
+    const dockRef = useRef<HTMLElement>(null);
+    const closeRef = useRef<HTMLButtonElement>(null);
+
+    const dialogOpen = search || folder !== null;
+
+    const unread = Object.values(unreadMessages).reduce(
+        (sum, count) => sum + count,
+        0,
+    );
+
+    const weatherEnabled =
+        realtimeConfig.weatherEnabled &&
+        Boolean(realtimeConfig.weatherApiKey);
+
+    useEffect(() => {
+        if (!weatherEnabled) return;
+
+        let active = true;
+
+        const refresh = () =>
+            void RealtimeContextManager.fetchWeather(realtimeConfig).then(
+                data => {
+                    if (active) setWeather(data);
+                },
+            );
+
+        refresh();
+
+        const timer = window.setInterval(refresh, 10 * 60 * 1000);
+
+        return () => {
+            active = false;
+            window.clearInterval(timer);
+        };
+    }, [realtimeConfig, weatherEnabled]);
+
+    useEffect(() => {
+        if (folder) closeRef.current?.focus();
+    }, [folder]);
+
+    useEffect(() => {
+        pageRef.current?.toggleAttribute('inert', dialogOpen);
+        dockRef.current?.toggleAttribute('inert', dialogOpen);
+    }, [dialogOpen]);
+
+    const dismiss = () => {
+        setFolder(null);
+        setSearch(false);
+        setQuery('');
+    };
+
+    const appButton = (id: AppID, dock = false) => {
+        const app = IOS_ICONS.get(id);
+        if (!app) return null;
+
+        return (
+            <button
+                key={id}
+                className="ios-app"
+                aria-label={app.name}
+                onClick={() => {
+                    dismiss();
+                    openApp(id);
+                }}
+            >
+                <IOSIcon id={id}/>
+
+                {!dock && <span className="ios-label">{app.name}</span>}
+
+                {id === AppID.Chat && unread > 0 && (
+                    <span className="ios-badge">
+                        {unread > 99 ? '99+' : unread}
+                    </span>
+                )}
+            </button>
+        );
+    };
+
+    const visibleWeather = weatherEnabled ? weather : null;
+
+    const WeatherIcon = visibleWeather?.icon.startsWith('01')
+        ? visibleWeather.icon.endsWith('n')
+            ? Moon
+            : Sun
+        : /^(09|10|11)/.test(visibleWeather?.icon || '')
+          ? CloudRain
+          : Cloud;
+
+    const results = IOS_APPS
+        .filter(
+            app =>
+                app.id !== AppID.CharCreatorDev ||
+                isDevDebugAvailable(),
+        )
+        .filter(app =>
+            `${app.name} ${app.id}`
+                .toLowerCase()
+                .includes(query.trim().toLowerCase()),
+        );
+
+    const defaultWallpaper = /#FFDEE9\b/i.test(theme.wallpaper);
+
+    return (
+        <main
+            className="ios-home"
+            style={
+                defaultWallpaper
+                    ? {
+                          background:
+                              'linear-gradient(148deg,#859099,#535d65 52%,#353e46)',
+                      }
+                    : undefined
+            }
+        >
+            <style>{IOS_HOME_CSS}</style>
+
+            <div
+                className="ios-home-pages"
+                ref={pageRef}
+                aria-hidden={dialogOpen || undefined}
+                onScroll={event =>
+                    setPage(
+                        Math.round(
+                            event.currentTarget.scrollLeft /
+                                (event.currentTarget.clientWidth || 1),
+                        ),
+                    )
+                }
+            >
+                <section
+                    className="ios-home-page"
+                    aria-label="主屏幕第一页"
+                >
+                    <div className="ios-widget-row">
+                        <div className="ios-widget-wrap ios-widget-wide">
+                            <button
+                                className="ios-widget"
+                                onClick={() => openApp(AppID.Settings)}
+                                aria-label="天气设置"
+                            >
+                                <div className="ios-weather-top">
+                                    <div>
+                                        <div className="ios-weather-city">
+                                            {visibleWeather?.city ||
+                                                realtimeConfig.weatherCity ||
+                                                '天气'}
+                                        </div>
+
+                                        <div className="ios-weather-temp">
+                                            {visibleWeather
+                                                ? `${visibleWeather.temp}°`
+                                                : '—°'}
+                                        </div>
+                                    </div>
+
+                                    <div className="ios-weather-status">
+                                        <WeatherIcon
+                                            size={27}
+                                            weight="fill"
+                                        />
+
+                                        <span>
+                                            {visibleWeather?.description ||
+                                                (weatherEnabled
+                                                    ? '暂无天气数据'
+                                                    : '点此配置天气')}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="ios-weather-footer">
+                                    <span>
+                                        体感{' '}
+                                        <strong>
+                                            {visibleWeather
+                                                ? `${visibleWeather.feelsLike}°`
+                                                : '—'}
+                                        </strong>
+                                    </span>
+
+                                    <span>
+                                        湿度{' '}
+                                        <strong>
+                                            {visibleWeather
+                                                ? `${visibleWeather.humidity}%`
+                                                : '—'}
+                                        </strong>
+                                    </span>
+                                </div>
+                            </button>
+
+                            <span className="ios-label">天气</span>
+                        </div>
+                    </div>
+
+                    <div className="ios-grid">
+                        {IOS_FOLDERS.map(group => (
+                            <button
+                                key={group.name}
+                                className="ios-folder"
+                                onClick={() => setFolder(group)}
+                            >
+                                <span className="ios-folder-tile">
+                                    {group.apps.map(id => (
+                                        <IOSIcon key={id} id={id}/>
+                                    ))}
+                                </span>
+
+                                <span className="ios-label">
+                                    {group.name}
+                                </span>
+                            </button>
+                        ))}
+
+                        {[
+                            AppID.Character,
+                            AppID.Call,
+                            AppID.Gallery,
+                            AppID.Settings,
+                            AppID.Appearance,
+                            AppID.Study,
+                        ].map(id => appButton(id))}
+                    </div>
+                </section>
+
+                <section
+                    className="ios-home-page"
+                    aria-label="主屏幕第二页"
+                >
+                    <div className="ios-widget-row">
+                        <IOSCalendarWidget/>
+                        <IOSClockWidget {...virtualTime}/>
+                    </div>
+
+                    <div className="ios-grid">
+                        {IOS_SECONDARY.map(id => appButton(id))}
+
+                        {Array.from({ length: 7 }, (_, i) => (
+                            <span key={i} aria-hidden="true"/>
+                        ))}
+
+                        {[
+                            AppID.Browser,
+                            AppID.Worldbook,
+                            AppID.ThemeMaker,
+                            AppID.Appearance,
+                        ].map(id => appButton(id))}
+                    </div>
+                </section>
+            </div>
+
+            <button
+                className="ios-search"
+                onClick={() => setSearch(true)}
+                tabIndex={dialogOpen ? -1 : 0}
+            >
+                <MagnifyingGlass size={13} weight="bold"/>
+                搜索
+            </button>
+
+            <button
+                className="ios-page-turn"
+                aria-label={page ? '上一页' : '下一页'}
+                tabIndex={dialogOpen ? -1 : 0}
+                onClick={() =>
+                    pageRef.current?.scrollTo({
+                        left: page
+                            ? 0
+                            : pageRef.current.clientWidth,
+                        behavior: 'smooth',
+                    })
+                }
+            >
+                {page ? '‹' : '›'}
+            </button>
+
+            <nav
+                className="ios-dock"
+                ref={dockRef}
+                aria-label="Dock"
+                aria-hidden={dialogOpen || undefined}
+            >
+                {IOS_DOCK.map(id => appButton(id, true))}
+            </nav>
+
+            {dialogOpen && (
+                <div
+                    className="ios-home-dialog"
+                    onClick={dismiss}
+                    onKeyDown={event => {
+                        if (event.key === 'Escape') dismiss();
+                    }}
+                >
+                    <section
+                        className="ios-home-panel"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={folder?.name || '搜索应用'}
+                        onClick={event => event.stopPropagation()}
+                    >
+                        <header className="ios-panel-head">
+                            <h2>{folder?.name || '搜索应用'}</h2>
+
+                            <button
+                                ref={closeRef}
+                                aria-label="关闭"
+                                onClick={dismiss}
+                            >
+                                <X size={16} weight="bold"/>
+                            </button>
+                        </header>
+
+                        {search && (
+                            <input
+                                autoFocus
+                                value={query}
+                                onChange={event =>
+                                    setQuery(event.target.value)
+                                }
+                                aria-label="应用名称"
+                                placeholder="搜索应用"
+                            />
+                        )}
+
+                        <div className="ios-grid">
+                            {(folder
+                                ? folder.apps
+                                : results.map(app => app.id)
+                            ).map(id => appButton(id))}
+                        </div>
+
+                        {search && results.length === 0 && (
+                            <p className="ios-home-missing">
+                                没有找到应用
+                            </p>
+                        )}
+                    </section>
+                </div>
+            )}
+        </main>
+    );
+}
+
+export default function HomeLauncher() {
+    return <IOSHome/>;
+}
