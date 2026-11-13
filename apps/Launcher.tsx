@@ -9,61 +9,40 @@ import NowPlayingSquareWidget from '../components/os/NowPlayingSquareWidget';
 
 const GLASS_CSS = `
 .glass-launcher .glass-icons button>div:first-child{
-  position:relative!important;
-  isolation:isolate;
-  overflow:hidden!important;
-  background:linear-gradient(145deg,rgba(255,255,255,.34),rgba(255,255,255,.09) 52%,rgba(255,255,255,.19))!important;
-  border:1px solid rgba(255,255,255,.5)!important;
-  border-radius:1.18rem!important;
+  position:relative!important;isolation:isolate;overflow:hidden!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.19),rgba(255,255,255,.035) 52%,rgba(255,255,255,.10))!important;
+  border:1px solid rgba(255,255,255,.36)!important;border-radius:1.18rem!important;
   -webkit-backdrop-filter:blur(18px) saturate(120%)!important;
   backdrop-filter:blur(18px) saturate(120%)!important;
-  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.58),0 6px 20px rgba(12,18,28,.18)!important;
+  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.42),inset 0 -8px 18px rgba(255,255,255,.025),0 5px 16px rgba(12,18,28,.13)!important;
 }
 .glass-launcher .glass-icons button>div:first-child:before{
-  content:"";
-  position:absolute;
-  z-index:2;
-  inset:1px;
-  border-radius:inherit;
-  pointer-events:none;
-  background:linear-gradient(135deg,rgba(255,255,255,.38),transparent 34%,transparent 72%,rgba(255,255,255,.08));
+  content:"";position:absolute;z-index:2;inset:1px;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.25),transparent 34%,transparent 72%,rgba(255,255,255,.055));
 }
 .glass-launcher .glass-icons button>div:first-child:after{
-  content:"";
-  position:absolute;
-  z-index:2;
-  left:14%;
-  right:30%;
-  top:8%;
-  height:18%;
-  border-radius:999px;
-  pointer-events:none;
-  background:linear-gradient(180deg,rgba(255,255,255,.5),transparent);
+  content:"";position:absolute;z-index:2;left:14%;right:30%;top:8%;height:18%;border-radius:999px;pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.32),transparent);
 }
 .glass-launcher .glass-icons button>div:first-child>div{
-  position:relative;
-  z-index:1;
-  color:rgba(255,255,255,.97)!important;
+  position:relative;z-index:1;color:rgba(255,255,255,.97)!important;
   filter:drop-shadow(0 1.5px 2px rgba(15,22,32,.38))!important;
 }
 .glass-launcher .glass-icons button>div:first-child>img{
-  position:relative;
-  z-index:1;
+  position:relative;z-index:1;
   filter:grayscale(1) saturate(0) brightness(1.12)!important;
-  opacity:.87;
+  opacity:.74;
 }
 .glass-launcher .glass-icons button>span{
-  text-transform:none!important;
-  letter-spacing:.01em!important;
-  font-weight:600!important;
+  text-transform:none!important;letter-spacing:.01em!important;font-weight:600!important;
   text-shadow:0 1px 5px rgba(12,18,28,.55)!important;
 }
 .glass-launcher .glass-dock{
-  background:linear-gradient(145deg,rgba(255,255,255,.27),rgba(255,255,255,.09) 58%,rgba(255,255,255,.17))!important;
-  border:1px solid rgba(255,255,255,.43)!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(255,255,255,.045) 58%,rgba(255,255,255,.10))!important;
+  border:1px solid rgba(255,255,255,.34)!important;
   -webkit-backdrop-filter:blur(26px) saturate(125%)!important;
   backdrop-filter:blur(26px) saturate(125%)!important;
-  box-shadow:inset 0 1px 1px rgba(255,255,255,.5),0 10px 35px rgba(10,16,26,.2)!important;
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.42),0 10px 35px rgba(10,16,26,.16)!important;
 }
 `;
 
