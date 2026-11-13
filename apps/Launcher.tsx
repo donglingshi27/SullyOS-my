@@ -224,7 +224,7 @@ const AppGrid = React.memo(
           <AppIcon
             app={app}
             onClick={() => openApp(app.id)}
-            size='md'
+            size="md"
           />
         </div>
       ))}
