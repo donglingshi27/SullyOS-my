@@ -210,8 +210,10 @@ const AppGrid = React.memo(
     compact?: boolean;
   }) => (
     <div
-      className={`glass-icons grid grid-cols-4 place-items-center ${
-        compact ? 'gap-y-3 gap-x-1' : 'gap-y-5 gap-x-2'
+      className={`glass-icons grid place-items-center ${
+        compact
+          ? 'grid-cols-2 grid-rows-2 gap-y-3 gap-x-3'
+          : 'grid-cols-4 gap-y-5 gap-x-2'
       }`}
     >
       {apps.map((app) => (
@@ -222,7 +224,7 @@ const AppGrid = React.memo(
           <AppIcon
             app={app}
             onClick={() => openApp(app.id)}
-            size="md"
+            size={compact ? 'sm' : 'md'}
           />
         </div>
       ))}
