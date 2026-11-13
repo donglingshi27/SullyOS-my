@@ -4,45 +4,100 @@ import { INSTALLED_APPS, DOCK_APPS } from '../constants';
 import AppIcon from '../components/os/AppIcon';
 import { DB } from '../utils/db';
 import { AppID, CharacterProfile, DailySchedule } from '../types';
-import { ScheduleHomeWidget, ScheduleFullscreenViewer } from '../components/schedule/ScheduleHomeWidget';
+import {
+  ScheduleHomeWidget,
+  ScheduleFullscreenViewer,
+} from '../components/schedule/ScheduleHomeWidget';
 import NowPlayingSquareWidget from '../components/os/NowPlayingSquareWidget';
 
 const GLASS_CSS = `
 .glass-launcher .glass-icons button>div:first-child{
-  position:relative!important;isolation:isolate;overflow:hidden!important;
-  background:linear-gradient(145deg,rgba(255,255,255,.19),rgba(255,255,255,.035) 52%,rgba(255,255,255,.10))!important;
-  border:1px solid rgba(255,255,255,.36)!important;border-radius:1.18rem!important;
-  -webkit-backdrop-filter:blur(18px) saturate(120%)!important;
-  backdrop-filter:blur(18px) saturate(120%)!important;
-  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.42),inset 0 -8px 18px rgba(255,255,255,.025),0 5px 16px rgba(12,18,28,.13)!important;
+  position:relative!important;
+  isolation:isolate;
+  overflow:hidden!important;
+  background:linear-gradient(
+    145deg,
+    rgba(255,255,255,.15),
+    rgba(255,255,255,.025) 52%,
+    rgba(255,255,255,.08)
+  )!important;
+  border:1px solid rgba(255,255,255,.28)!important;
+  border-radius:1.35rem!important;
+  -webkit-backdrop-filter:blur(24px) saturate(128%)!important;
+  backdrop-filter:blur(24px) saturate(128%)!important;
+  box-shadow:
+    inset 0 1.5px 1px rgba(255,255,255,.38),
+    inset 0 -10px 20px rgba(255,255,255,.02),
+    0 7px 22px rgba(12,18,28,.16)!important;
 }
+
 .glass-launcher .glass-icons button>div:first-child:before{
-  content:"";position:absolute;z-index:2;inset:1px;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(135deg,rgba(255,255,255,.25),transparent 34%,transparent 72%,rgba(255,255,255,.055));
+  content:"";
+  position:absolute;
+  z-index:2;
+  inset:1px;
+  border-radius:inherit;
+  pointer-events:none;
+  background:linear-gradient(
+    135deg,
+    rgba(255,255,255,.23),
+    transparent 34%,
+    transparent 72%,
+    rgba(255,255,255,.045)
+  );
 }
+
 .glass-launcher .glass-icons button>div:first-child:after{
-  content:"";position:absolute;z-index:2;left:14%;right:30%;top:8%;height:18%;border-radius:999px;pointer-events:none;
-  background:linear-gradient(180deg,rgba(255,255,255,.32),transparent);
+  content:"";
+  position:absolute;
+  z-index:2;
+  left:14%;
+  right:30%;
+  top:8%;
+  height:18%;
+  border-radius:999px;
+  pointer-events:none;
+  background:linear-gradient(
+    180deg,
+    rgba(255,255,255,.28),
+    transparent
+  );
 }
+
 .glass-launcher .glass-icons button>div:first-child>div{
-  position:relative;z-index:1;color:rgba(255,255,255,.97)!important;
+  position:relative;
+  z-index:1;
+  color:rgba(255,255,255,.97)!important;
   filter:drop-shadow(0 1.5px 2px rgba(15,22,32,.38))!important;
 }
+
 .glass-launcher .glass-icons button>div:first-child>img{
-  position:relative;z-index:1;
+  position:relative;
+  z-index:1;
   filter:grayscale(1) saturate(0) brightness(1.12)!important;
-  opacity:.74;
+  opacity:.82;
 }
+
 .glass-launcher .glass-icons button>span{
-  text-transform:none!important;letter-spacing:.01em!important;font-weight:600!important;
+  text-transform:none!important;
+  letter-spacing:.01em!important;
+  font-weight:600!important;
   text-shadow:0 1px 5px rgba(12,18,28,.55)!important;
 }
+
 .glass-launcher .glass-dock{
-  background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(255,255,255,.045) 58%,rgba(255,255,255,.10))!important;
-  border:1px solid rgba(255,255,255,.34)!important;
-  -webkit-backdrop-filter:blur(26px) saturate(125%)!important;
-  backdrop-filter:blur(26px) saturate(125%)!important;
-  box-shadow:inset 0 1px 1px rgba(255,255,255,.42),0 10px 35px rgba(10,16,26,.16)!important;
+  background:linear-gradient(
+    145deg,
+    rgba(38,46,59,.42),
+    rgba(255,255,255,.075) 58%,
+    rgba(255,255,255,.13)
+  )!important;
+  border:1px solid rgba(255,255,255,.30)!important;
+  -webkit-backdrop-filter:blur(30px) saturate(135%)!important;
+  backdrop-filter:blur(30px) saturate(135%)!important;
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.36),
+    0 12px 40px rgba(10,16,26,.22)!important;
 }
 `;
 
@@ -52,13 +107,28 @@ const Clock = React.memo(() => {
   const now = new Date();
 
   const days = [
-    'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY',
-    'THURSDAY', 'FRIDAY', 'SATURDAY'
+    'SUNDAY',
+    'MONDAY',
+    'TUESDAY',
+    'WEDNESDAY',
+    'THURSDAY',
+    'FRIDAY',
+    'SATURDAY',
   ];
 
   const months = [
-    'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+    'JAN',
+    'FEB',
+    'MAR',
+    'APR',
+    'MAY',
+    'JUN',
+    'JUL',
+    'AUG',
+    'SEP',
+    'OCT',
+    'NOV',
+    'DEC',
   ];
 
   const greeting =
@@ -78,6 +148,7 @@ const Clock = React.memo(() => {
             className="w-1.5 h-1.5 rounded-full bg-emerald-400"
             style={{ boxShadow: '0 0 7px #4ade80' }}
           />
+
           <span className="text-[9px] font-bold tracking-[.2em] uppercase">
             System Online
           </span>
@@ -97,7 +168,9 @@ const Clock = React.memo(() => {
       <div className="flex items-end gap-3">
         <div className="text-[5.25rem] leading-[.9] font-black tracking-tighter drop-shadow-2xl">
           {String(virtualTime.hours).padStart(2, '0')}
-          <span className="font-thin opacity-35 animate-pulse">:</span>
+          <span className="font-thin opacity-35 animate-pulse">
+            :
+          </span>
           {String(virtualTime.minutes).padStart(2, '0')}
         </div>
 
@@ -224,7 +297,7 @@ const AppGrid = React.memo(
           <AppIcon
             app={app}
             onClick={() => openApp(app.id)}
-            size="md"
+            size="lg"
           />
         </div>
       ))}
@@ -232,50 +305,65 @@ const AppGrid = React.memo(
   ),
 );
 
-const CalendarPage = React.memo(({ color }: { color: string }) => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const count = new Date(year, month + 1, 0).getDate();
-  const offset = new Date(year, month, 1).getDay();
+const CalendarPage = React.memo(
+  ({ color }: { color: string }) => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const count = new Date(year, month + 1, 0).getDate();
+    const offset = new Date(year, month, 1).getDay();
 
-  const names = [
-    'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
-  ];
+    const names = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC',
+    ];
 
-  return (
-    <div
-      className="h-full w-full px-6 pt-24 pb-32"
-      style={{ color }}
-    >
+    return (
       <div
-        className="rounded-[2rem] p-6 bg-white/15 border border-white/25 shadow-2xl"
-        style={{
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
-        }}
+        className="h-full w-full px-6 pt-24 pb-32"
+        style={{ color }}
       >
-        <h2 className="text-xl font-bold tracking-[.15em] mb-5">
-          {names[month]} {year}
-        </h2>
+        <div
+          className="rounded-[2rem] p-6 bg-white/15 border border-white/25 shadow-2xl"
+          style={{
+            backdropFilter: 'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)',
+          }}
+        >
+          <h2 className="text-xl font-bold tracking-[.15em] mb-5">
+            {names[month]} {year}
+          </h2>
 
-        <div className="grid grid-cols-7 gap-y-3 text-center">
-          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-            <div
-              key={index}
-              className="text-[10px] opacity-45 font-bold"
-            >
-              {day}
-            </div>
-          ))}
+          <div className="grid grid-cols-7 gap-y-3 text-center">
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(
+              (day, index) => (
+                <div
+                  key={index}
+                  className="text-[10px] opacity-45 font-bold"
+                >
+                  {day}
+                </div>
+              ),
+            )}
 
-          {Array.from({ length: offset }).map((_, index) => (
-            <div key={`empty-${index}`} />
-          ))}
+            {Array.from({ length: offset }).map((_, index) => (
+              <div key={`empty-${index}`} />
+            ))}
 
-          {Array.from({ length: count }, (_, index) => index + 1).map(
-            (day) => (
+            {Array.from(
+              { length: count },
+              (_, index) => index + 1,
+            ).map((day) => (
               <div
                 key={day}
                 className={`h-8 grid place-items-center text-sm ${
@@ -286,29 +374,29 @@ const CalendarPage = React.memo(({ color }: { color: string }) => {
               >
                 {day}
               </div>
-            ),
-          )}
-        </div>
-      </div>
-
-      <div
-        className="mt-5 rounded-[2rem] p-5 bg-white/12 border border-white/20 min-h-40"
-        style={{
-          backdropFilter: 'blur(22px)',
-          WebkitBackdropFilter: 'blur(22px)',
-        }}
-      >
-        <div className="text-[11px] uppercase tracking-[.2em] font-bold opacity-60">
-          Upcoming Events
+            ))}
+          </div>
         </div>
 
-        <div className="h-28 grid place-items-center text-xs opacity-40">
-          No upcoming events
+        <div
+          className="mt-5 rounded-[2rem] p-5 bg-white/12 border border-white/20 min-h-40"
+          style={{
+            backdropFilter: 'blur(22px)',
+            WebkitBackdropFilter: 'blur(22px)',
+          }}
+        >
+          <div className="text-[11px] uppercase tracking-[.2em] font-bold opacity-60">
+            Upcoming Events
+          </div>
+
+          <div className="h-28 grid place-items-center text-xs opacity-40">
+            No upcoming events
+          </div>
         </div>
       </div>
-    </div>
-  );
-});
+    );
+  },
+);
 
 let rememberedPage = 0;
 
@@ -323,11 +411,20 @@ const Launcher: React.FC = () => {
     unreadMessages,
   } = useOS();
 
-  const [char, setChar] = useState<CharacterProfile | null>(null);
-  const [message, setMessage] = useState('System Ready.');
-  const [schedule, setSchedule] = useState<DailySchedule | null>(null);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [page, setPage] = useState(rememberedPage);
+  const [char, setChar] =
+    useState<CharacterProfile | null>(null);
+
+  const [message, setMessage] =
+    useState('System Ready.');
+
+  const [schedule, setSchedule] =
+    useState<DailySchedule | null>(null);
+
+  const [scheduleOpen, setScheduleOpen] =
+    useState(false);
+
+  const [page, setPage] =
+    useState(rememberedPage);
 
   const scroller = useRef<HTMLDivElement>(null);
   const color = theme.contentColor || '#fff';
@@ -353,7 +450,11 @@ const Launcher: React.FC = () => {
   const pages = useMemo(() => {
     const result: typeof INSTALLED_APPS[] = [];
 
-    for (let index = 0; index < apps.length; index += 8) {
+    for (
+      let index = 0;
+      index < apps.length;
+      index += 8
+    ) {
       result.push(apps.slice(index, index + 8));
     }
 
@@ -372,7 +473,8 @@ const Launcher: React.FC = () => {
 
     const current =
       characters.find(
-        (character) => character.id === activeCharacterId,
+        (character) =>
+          character.id === activeCharacterId,
       ) || characters[0];
 
     setChar(current);
@@ -386,16 +488,21 @@ const Launcher: React.FC = () => {
         const last = visible[visible.length - 1];
 
         setMessage(
-          last?.content?.replace(/\[.*?\]/g, '').trim() ||
+          last?.content
+            ?.replace(/\[.*?\]/g, '')
+            .trim() ||
             current.description ||
             'System Ready.',
         );
       })
       .catch(() => {
-        setMessage(current.description || 'System Ready.');
+        setMessage(
+          current.description || 'System Ready.',
+        );
       });
 
-    const date = new Date().toISOString().split('T')[0];
+    const date =
+      new Date().toISOString().split('T')[0];
 
     DB.getDailySchedule(current.id, date)
       .then(setSchedule)
@@ -430,10 +537,11 @@ const Launcher: React.FC = () => {
     rememberedPage = next;
   };
 
-  const totalUnread = Object.values(unreadMessages).reduce(
-    (total, count) => total + count,
-    0,
-  );
+  const totalUnread =
+    Object.values(unreadMessages).reduce(
+      (total, count) => total + count,
+      0,
+    );
 
   const characterUnread = char
     ? unreadMessages[char.id] || 0
@@ -469,7 +577,9 @@ const Launcher: React.FC = () => {
                   char={char}
                   unread={characterUnread}
                   message={message}
-                  onClick={() => openApp(AppID.Chat)}
+                  onClick={() =>
+                    openApp(AppID.Chat)
+                  }
                 />
 
                 <div className="flex-1">
@@ -486,7 +596,9 @@ const Launcher: React.FC = () => {
                     schedule={schedule}
                     character={char}
                     contentColor={color}
-                    onOpen={() => setScheduleOpen(true)}
+                    onOpen={() =>
+                      setScheduleOpen(true)
+                    }
                   />
                 )}
 
@@ -520,12 +632,15 @@ const Launcher: React.FC = () => {
                     className="aspect-square rounded-[1.75rem] overflow-hidden border border-white/25 bg-white/15 active:scale-[.98] transition-transform"
                     style={{
                       backdropFilter: 'blur(20px)',
-                      WebkitBackdropFilter: 'blur(20px)',
+                      WebkitBackdropFilter:
+                        'blur(20px)',
                     }}
                   >
                     {theme.launcherWidgets?.['dsq'] ? (
                       <img
-                        src={theme.launcherWidgets['dsq']}
+                        src={
+                          theme.launcherWidgets['dsq']
+                        }
                         className="w-full h-full object-cover"
                         alt=""
                       />
@@ -565,19 +680,19 @@ const Launcher: React.FC = () => {
       </div>
 
       <div className="absolute left-0 right-0 bottom-[7.25rem] flex justify-center gap-2 pointer-events-none">
-        {Array.from({ length: totalPages }).map(
-          (_, index) => (
-            <span
-              key={index}
-              className={`h-1.5 rounded-full transition-all ${
-                page === index
-                  ? 'w-4 opacity-100'
-                  : 'w-1.5 opacity-40'
-              }`}
-              style={{ background: color }}
-            />
-          ),
-        )}
+        {Array.from({
+          length: totalPages,
+        }).map((_, index) => (
+          <span
+            key={index}
+            className={`h-1.5 rounded-full transition-all ${
+              page === index
+                ? 'w-4 opacity-100'
+                : 'w-1.5 opacity-40'
+            }`}
+            style={{ background: color }}
+          />
+        ))}
       </div>
 
       <div className="absolute left-0 right-0 bottom-5 px-4 flex justify-center">
@@ -591,7 +706,7 @@ const Launcher: React.FC = () => {
                 app={app}
                 onClick={() => openApp(app.id)}
                 variant="dock"
-                size="md"
+                size="lg"
               />
 
               {app.id === AppID.Chat &&
@@ -609,7 +724,9 @@ const Launcher: React.FC = () => {
 
       <ScheduleFullscreenViewer
         open={scheduleOpen}
-        onClose={() => setScheduleOpen(false)}
+        onClose={() =>
+          setScheduleOpen(false)
+        }
         characters={characters}
         activeCharId={char?.id || null}
         onSwitchCharacter={() => {}}
