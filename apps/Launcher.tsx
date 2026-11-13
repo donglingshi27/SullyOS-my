@@ -112,7 +112,7 @@ const IOS_TILE_COLORS: Record<string, [string, string]> = {
 
 function IOSIcon({ id }: { id: AppID }) {
     const app = IOS_ICONS.get(id);
-    const Icon = Icons[app?.icon || 'Settings'];
+    const Icon = Icons[app?.icon || 'Settings'] || Icons.Settings;
     const [highlight, base] =
         IOS_TILE_COLORS[app?.color || 'slate'] || IOS_TILE_COLORS.slate;
 
