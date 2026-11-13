@@ -1,243 +1,643 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useOS } from '../context/OSContext';
-import { INSTALLED_APPS, Icons } from '../constants';
-import { Cloud, CloudRain, MagnifyingGlass, Moon, Sun, X } from '@phosphor-icons/react';
-import { RealtimeContextManager, type WeatherData } from '../utils/realtimeContext';
-import { isDevDebugAvailable } from '../utils/devDebug';
-import { AppID } from '../types';
+import { INSTALLED_APPS, DOCK_APPS } from '../constants';
+import AppIcon from '../components/os/AppIcon';
+import { DB } from '../utils/db';
+import { AppID, CharacterProfile, DailySchedule } from '../types';
+import { ScheduleHomeWidget, ScheduleFullscreenViewer } from '../components/schedule/ScheduleHomeWidget';
+import NowPlayingSquareWidget from '../components/os/NowPlayingSquareWidget';
 
-// Required Notice: Copyright (c) 2024-2026 NMJ (SullyOS / 手抓糯米机)
-const IOS_DOCK = [AppID.GroupChat, AppID.Chat, AppID.Browser, AppID.Music];
-const IOS_FOLDERS: { name: string; apps: AppID[] }[] = [
-    { name: '社交', apps: [AppID.Social, AppID.CheckPhone, AppID.Call, AppID.Date, AppID.GroupChat, AppID.User] },
-    { name: '创作', apps: [AppID.Gallery, AppID.Songwriting, AppID.XhsStock, AppID.VoiceDesigner, AppID.Journal, AppID.Novel, AppID.Handbook] },
-    { name: '生活', apps: [AppID.Room, AppID.LifeSim, AppID.Game, AppID.SpecialMoments, AppID.VRWorld, AppID.XhsFreeRoam, AppID.HotNews, AppID.Bank] },
-];
-const IOS_SECONDARY = [AppID.Character, AppID.Social, AppID.Gallery, AppID.Settings, AppID.Journal];
-const IOS_APPS = [...INSTALLED_APPS,
-    { id: AppID.Browser, name: '浏览器', icon: 'Browser', color: 'blue' },
-    { id: AppID.VoiceDesigner, name: '捏声音', icon: 'VoiceDesigner', color: 'rose' },
-    { id: AppID.Handbook, name: '手账', icon: 'Handbook', color: 'amber' },
-];
-const IOS_ICONS = new Map(IOS_APPS.map(app => [app.id, app]));
-
-const IOS_HOME_CSS = `
-.ios-home{--icon:clamp(42px,15.8cqw,70px);--row:clamp(68px,24.7cqw,103px);--gutter:6.8%;position:relative;isolation:isolate;container-type:inline-size;width:100%;height:100%;overflow:hidden;color:white;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif}
-.ios-home *{box-sizing:border-box}
-.ios-home button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.ios-home button:focus-visible,.ios-home input:focus-visible{outline:2px solid #a5d1ff;outline-offset:3px}
-.ios-home::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(15,18,26,.08),transparent 43%,rgba(20,24,30,.26))}
-.ios-home-pages{position:absolute;inset:max(56px,calc(var(--safe-top, 0px) + 11px)) 0 0;bottom:calc(var(--icon) + 9.4cqw + 32px);display:flex;overflow:auto hidden;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-inline:contain}
-.ios-home-pages::-webkit-scrollbar,.ios-home-page::-webkit-scrollbar{display:none}
-.ios-home-page{flex:0 0 100%;min-width:0;padding:0 var(--gutter) 28px;overflow-y:auto;scroll-snap-align:start;scroll-snap-stop:always;scrollbar-width:none}
-.ios-widget-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6%;margin-bottom:clamp(13px,4.4cqw,23px)}
-.ios-widget-wrap{min-width:0;text-align:center}
-.ios-widget-wide{grid-column:1/-1}
-.ios-widget{width:100%;border-radius:clamp(20px,6.8cqw,32px);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.18);display:flex;position:relative}
-.ios-widget-wide .ios-widget{aspect-ratio:2.13;flex-direction:column;justify-content:space-between;padding:4.7% 5.2%;text-align:left;background:linear-gradient(160deg,#343d4b,#202530 67%,#1a2430)}
-.ios-widget-wrap:not(.ios-widget-wide) .ios-widget{aspect-ratio:1}
-.ios-label{display:block;text-align:center;font-size:clamp(9px,2.75cqw,13px);line-height:1.3;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;text-shadow:0 1px 4px #172030b8;margin-top:4px;max-width:100%}
-.ios-widget-wrap>.ios-label{margin-top:5px}
-.ios-weather-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-.ios-weather-city{font-size:clamp(12px,3.8cqw,20px);font-weight:600}
-.ios-weather-temp{font-size:clamp(32px,10.6cqw,61px);letter-spacing:-.055em;line-height:1.04;font-weight:300}
-.ios-weather-status{text-align:right;font-size:clamp(10px,3.05cqw,16px)}
-.ios-weather-status svg{margin-left:auto}
-.ios-weather-footer{display:flex;justify-content:space-between;border-top:1px solid #fff2;padding-top:4%;font-size:clamp(10px,3.15cqw,16px);color:#f3f5f9}
-.ios-weather-footer span{color:#bac2ce}
-.ios-clock{background:#fcfcfd;color:#101114;align-items:center;justify-content:center}
-.ios-clock svg{position:absolute;inset:4%;width:92%;height:92%}
-.ios-clock time{font-size:clamp(30px,9.9cqw,65px);font-stretch:condensed;font-weight:780;letter-spacing:-.09em;font-variant-numeric:tabular-nums;margin-right:.09em}
-.ios-calendar{background:linear-gradient(145deg,#343537,#1e1f21);flex-direction:column;justify-content:space-between;text-align:left;padding:13% 12%}
-.ios-calendar-day{font-size:clamp(32px,10.2cqw,65px);font-weight:300;line-height:1;letter-spacing:-.06em}
-.ios-calendar-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;text-align:center;font-size:clamp(8px,2.35cqw,12px);font-variant-numeric:tabular-nums}
-.ios-calendar-week b{background:#f04d55;border-radius:50%;font-weight:650}
-.ios-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:var(--row);column-gap:2%;align-items:start;justify-items:center;margin:0 -3.2%}
-.ios-app,.ios-folder{position:relative;display:flex;flex-direction:column;align-items:center;width:100%;min-width:0;background:none;border:0;padding:0}
-.ios-app:active .ios-icon,.ios-folder:active .ios-folder-tile{scale:.92}
-.ios-icon,.ios-folder-tile{width:var(--icon);height:var(--icon);border-radius:25%;position:relative;overflow:hidden;transition:scale .16s ease}
-.ios-icon{display:grid;place-items:center;color:rgba(255,255,255,.96);background:linear-gradient(145deg,rgba(255,255,255,.34),rgba(255,255,255,.11) 48%,rgba(255,255,255,.19));backdrop-filter:blur(18px) saturate(125%);-webkit-backdrop-filter:blur(18px) saturate(125%);box-shadow:inset 0 0 0 .8px rgba(255,255,255,.52),inset 0 1.5px 1px rgba(255,255,255,.62),inset 0 -10px 18px rgba(255,255,255,.04),0 5px 16px rgba(12,18,28,.16)}
-.ios-icon::before{content:"";position:absolute;inset:1px;border-radius:inherit;background:linear-gradient(135deg,rgba(255,255,255,.36),transparent 34%,transparent 70%,rgba(255,255,255,.10));pointer-events:none}
-.ios-icon::after{content:"";position:absolute;left:14%;right:28%;top:9%;height:19%;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0));filter:blur(.5px);pointer-events:none}
-.ios-icon svg{position:relative;z-index:1;width:54%;height:54%;filter:drop-shadow(0 1.5px 2px rgba(20,25,35,.34))}
-.ios-folder-tile{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:9%;padding:17%;background:linear-gradient(145deg,rgba(255,255,255,.31),rgba(255,255,255,.09) 55%,rgba(255,255,255,.17));backdrop-filter:blur(20px) saturate(120%);-webkit-backdrop-filter:blur(20px) saturate(120%);box-shadow:inset 0 0 0 .8px rgba(255,255,255,.48),inset 0 1.5px 1px rgba(255,255,255,.56),0 5px 16px rgba(12,18,28,.15)}
-.ios-folder-tile .ios-icon{width:100%;height:100%;border-radius:27%;background:rgba(255,255,255,.18);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.45)}
-.ios-folder-tile .ios-icon::before{background:linear-gradient(135deg,rgba(255,255,255,.34),transparent 58%)}
-.ios-folder-tile .ios-icon::after{display:none}
-.ios-folder-tile .ios-icon svg{width:72%;height:72%;filter:drop-shadow(0 1px 1px rgba(15,20,30,.48))}
-.ios-badge{position:absolute;z-index:1;top:-5px;right:calc((100% - var(--icon))/2 - 5px);background:#ff3b30;min-width:19px;height:19px;padding:1px 4px;display:grid;place-items:center;border-radius:100px;font-size:11px;font-weight:600}
-.ios-dock{position:absolute;left:3.4%;right:3.4%;bottom:clamp(8px,3.2cqw,18px);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:clamp(10px,4.2cqw,22px) 2%;border-radius:clamp(25px,8.1cqw,45px);background:linear-gradient(155deg,#e0e0e033,#17191c55);backdrop-filter:blur(25px) saturate(150%);-webkit-backdrop-filter:blur(25px) saturate(150%);box-shadow:inset 0 0 0 1px #ffffff35,inset 0 1px 1px #ffffff24}
-.ios-search{position:absolute;left:50%;translate:-50% 0;bottom:calc(var(--icon) + 9.4cqw + 22px);border:1px solid #fff3;border-radius:100px;background:#5b5d6385;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;align-items:center;gap:5px;padding:5px 10px;font-size:clamp(9px,2.65cqw,13px)!important}
-.ios-home-dialog{position:absolute;inset:0;z-index:2;display:grid;align-content:center;justify-items:center;background:#12161f54;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);padding:var(--safe-top,0px) 7% 16px}
-.ios-home-panel{width:100%;max-height:100%;overflow:auto;padding:16px 12px 10px;background:linear-gradient(135deg,#f9f9fd50,#b9bbca43);border:1px solid #ffffff62;border-radius:29px;box-shadow:0 16px 48px #14182444}
-.ios-panel-head{display:flex;align-items:center;justify-content:space-between;margin:0 4px 15px}
-.ios-panel-head h2{margin:0;font-size:21px;font-weight:650}
-.ios-panel-head button{display:grid;place-items:center;border:0;border-radius:50%;background:#ffffff40;width:30px;height:30px}
-.ios-home-panel .ios-grid{grid-template-columns:repeat(3,minmax(0,1fr));margin:0}
-.ios-home-panel input{display:block;width:100%;margin-bottom:15px;border-radius:12px;padding:10px 12px;border:1px solid #fff5;background:#15182585;color:white;font-size:16px}
-.ios-home-panel input::placeholder{color:#fff9}
-.ios-page-turn{position:absolute;right:7%;bottom:calc(var(--icon) + 9.4cqw + 22px);font-size:12px!important;border:0;background:#2225;border-radius:100px;width:26px;height:26px}
-.ios-home-missing{padding:10px 6px;margin:0;font-size:14px}
-@media(prefers-reduced-motion:reduce){.ios-icon,.ios-folder-tile{transition:none}}
+const GLASS_CSS = `
+.glass-launcher .glass-icons button>div:first-child{
+  position:relative!important;
+  isolation:isolate;
+  overflow:hidden!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.34),rgba(255,255,255,.09) 52%,rgba(255,255,255,.19))!important;
+  border:1px solid rgba(255,255,255,.5)!important;
+  border-radius:1.18rem!important;
+  -webkit-backdrop-filter:blur(18px) saturate(120%)!important;
+  backdrop-filter:blur(18px) saturate(120%)!important;
+  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.58),0 6px 20px rgba(12,18,28,.18)!important;
+}
+.glass-launcher .glass-icons button>div:first-child:before{
+  content:"";
+  position:absolute;
+  z-index:2;
+  inset:1px;
+  border-radius:inherit;
+  pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.38),transparent 34%,transparent 72%,rgba(255,255,255,.08));
+}
+.glass-launcher .glass-icons button>div:first-child:after{
+  content:"";
+  position:absolute;
+  z-index:2;
+  left:14%;
+  right:30%;
+  top:8%;
+  height:18%;
+  border-radius:999px;
+  pointer-events:none;
+  background:linear-gradient(180deg,rgba(255,255,255,.5),transparent);
+}
+.glass-launcher .glass-icons button>div:first-child>div{
+  position:relative;
+  z-index:1;
+  color:rgba(255,255,255,.97)!important;
+  filter:drop-shadow(0 1.5px 2px rgba(15,22,32,.38))!important;
+}
+.glass-launcher .glass-icons button>div:first-child>img{
+  position:relative;
+  z-index:1;
+  filter:grayscale(1) saturate(0) brightness(1.12)!important;
+  opacity:.87;
+}
+.glass-launcher .glass-icons button>span{
+  text-transform:none!important;
+  letter-spacing:.01em!important;
+  font-weight:600!important;
+  text-shadow:0 1px 5px rgba(12,18,28,.55)!important;
+}
+.glass-launcher .glass-dock{
+  background:linear-gradient(145deg,rgba(255,255,255,.27),rgba(255,255,255,.09) 58%,rgba(255,255,255,.17))!important;
+  border:1px solid rgba(255,255,255,.43)!important;
+  -webkit-backdrop-filter:blur(26px) saturate(125%)!important;
+  backdrop-filter:blur(26px) saturate(125%)!important;
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.5),0 10px 35px rgba(10,16,26,.2)!important;
+}
 `;
 
-function IOSIcon({ id }: { id: AppID }) {
-    const app = IOS_ICONS.get(id);
-    const Icon = Icons[app?.icon || 'Settings'] || Icons.Settings;
-    return (
-        <span className="ios-icon" aria-hidden="true">
-            {id === AppID.Browser ? (
-                <svg viewBox="0 0 100 100">
-                    <circle cx="50" cy="50" r="43" fill="none" stroke="currentColor" strokeWidth="4"/>
-                    {Array.from({ length: 36 }, (_, i) => <path key={i} d="M50 5v5" stroke="white" strokeWidth="1.35" transform={`rotate(${i*10} 50 50)`}/>)}
-                    <path d="m77 23-18 36-18-18z" fill="currentColor"/ <><path d="m23 77 18-36 line18 18z" fill="currentColor key" opacity=".55"/>
-                </={svg>
-            ) : id === AppID.Chat ||i id === AppID.GroupChat ? (
-               } <svg viewBox="0 0  x64 64" fill="currentColor">
-                    <path d="M32 8c-15 0-27 10-27 23 0 8 4 14 10 18l-3 9 11-6c3 1 6 1 9 1 15 0 27-10 27-22S47 8 32 8Z"/>
-                    {id === AppID.GroupChat && <text x="32" y="36" fill="currentColor" textAnchor="middle" fontSize="15" fontWeight="800">TALK</text>}
-                </svg>
-            ) : <Icon />}
+const Clock = React.memo(() => {
+  const { virtualTime, theme } = useOS();
+  const color = theme.contentColor || '#fff';
+  const now = new Date();
+
+  const days = [
+    'SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY',
+    'THURSDAY', 'FRIDAY', 'SATURDAY'
+  ];
+
+  const months = [
+    'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+  ];
+
+  const greeting =
+    virtualTime.hours < 5
+      ? 'Good Night'
+      : virtualTime.hours < 12
+        ? 'Good Morning'
+        : virtualTime.hours < 18
+          ? 'Good Afternoon'
+          : 'Good Evening';
+
+  return (
+    <div className="mt-5 mb-4" style={{ color }}>
+      <div className="flex items-center gap-2 mb-3 opacity-90">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 border border-white/20">
+          <span
+            className="w-1.5 h-1.5 rounded-full bg-emerald-400"
+            style={{ boxShadow: '0 0 7px #4ade80' }}
+          />
+          <span className="text-[9px] font-bold tracking-[.2em] uppercase">
+            System Online
+          </span>
+        </div>
+
+        <div className="h-px flex-1 bg-current opacity-20" />
+
+        <span className="text-[9px] tracking-[.2em] opacity-60">
+          {now.getFullYear()}
         </span>
+      </div>
+
+      <div className="text-[10px] tracking-[.25em] uppercase opacity-55 font-semibold">
+        {greeting}
+      </div>
+
+      <div className="flex items-end gap-3">
+        <div className="text-[5.25rem] leading-[.9] font-black tracking-tighter drop-shadow-2xl">
+          {String(virtualTime.hours).padStart(2, '0')}
+          <span className="font-thin opacity-35 animate-pulse">:</span>
+          {String(virtualTime.minutes).padStart(2, '0')}
+        </div>
+
+        <div className="pb-2">
+          <div className="text-[9px] font-bold tracking-[.18em]">
+            {days[now.getDay()]}
+          </div>
+
+          <div className="text-xl font-black">
+            {String(now.getDate()).padStart(2, '0')}{' '}
+            <span className="text-[9px] tracking-[.18em] opacity-65">
+              {months[now.getMonth()]}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const CharacterCard = React.memo(
+  ({
+    char,
+    unread,
+    message,
+    onClick,
+  }: {
+    char: CharacterProfile | null;
+    unread: number;
+    message: string;
+    onClick: () => void;
+  }) => {
+    const { theme } = useOS();
+    const color = theme.contentColor || '#fff';
+
+    return (
+      <button
+        onClick={onClick}
+        className="w-full h-[88px] mb-4 rounded-[1.7rem] overflow-hidden relative text-left active:scale-[.985] transition-transform border border-white/20"
+        style={{
+          background: 'rgba(255,255,255,.11)',
+          backdropFilter: 'blur(24px) saturate(1.35)',
+          WebkitBackdropFilter: 'blur(24px) saturate(1.35)',
+          boxShadow:
+            'inset 0 1px rgba(255,255,255,.2),0 9px 28px rgba(0,0,0,.14)',
+          color,
+        }}
+      >
+        {char?.avatar && (
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage: `url(${char.avatar})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: 'blur(28px)',
+              transform: 'scale(1.3)',
+            }}
+          />
+        )}
+
+        <div className="relative h-full flex items-center gap-3 px-3">
+          <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-black/20 border border-white/30 shrink-0">
+            {char?.avatar ? (
+              <img
+                src={char.avatar}
+                className="w-full h-full object-cover"
+                alt=""
+              />
+            ) : (
+              <div className="w-full h-full grid place-items-center text-2xl">
+                ♡
+              </div>
+            )}
+
+            <span className="absolute right-1 bottom-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white/50" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <b className="text-[15px] truncate">
+                {char?.name || 'Sully'}
+              </b>
+
+              {unread > 0 && (
+                <span className="text-[8px] px-1.5 py-.5 rounded-full bg-red-500 text-white font-bold">
+                  {unread} NEW
+                </span>
+              )}
+            </div>
+
+            <p className="text-[11px] opacity-75 line-clamp-2 mt-1">
+              ▶ {message || 'System Ready.'}
+            </p>
+          </div>
+        </div>
+      </button>
     );
-}
+  },
+);
 
-function IOSClockWidget({ hours, minutes }: { hours: number; minutes: number }) {
-    const clock = [hours, minutes].map(number => String(number).padStart(2, '0')).join(':');
-    return <div className="ios-widget-wrap">
-        <div className="ios-widget ios-clock">
-            <svg viewBox="0 0 160 160" aria-hidden="true">{Array.from({ length: 60 }, (_, i) =>
-               1="80" x2="80" y1="3" y2={i % 5 === 0 ? 10 : 8} stroke="#19191d"
-                    strokeWidth="1.6" strokeLinecap="round" opacity={0.25 + (i / 60) * .7} transform={`rotate(${i*6} 80 80)`}/>)}</svg>
-            <time>{clock}</time>
+const AppGrid = React.memo(
+  ({
+    apps,
+    openApp,
+    compact = false,
+  }: {
+    apps: typeof INSTALLED_APPS;
+    openApp: (id: AppID) => void;
+    compact?: boolean;
+  }) => (
+    <div
+      className={`glass-icons grid grid-cols-4 place-items-center ${
+        compact ? 'gap-y-3 gap-x-1' : 'gap-y-5 gap-x-2'
+      }`}
+    >
+      {apps.map((app) => (
+        <div
+          key={app.id}
+          className="active:scale-95 transition-transform"
+        >
+          <AppIcon
+            app={app}
+            onClick={() => openApp(app.id)}
+            size="md"
+          />
         </div>
-        <span className="ios-label">时钟</span>
-    </div>;
-}
+      ))}
+    </div>
+  ),
+);
 
-function IOSCalendarWidget() {
-    const now = new Date();
-    const days = Array.from({ length: 7 }, (_, i) =>
-        new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7 + i));
-    return <div className="ios-widget-wrap">
-        <div className="ios-widget ios-calendar">
-            <span>{now.getMonth() + 1}月</span><span className="ios-calendar-day">{now.getDate()}</span>
-            <div className="ios-calendar-week">{days.map(day => day.getDate() === now.getDate()
-                ? <b key={day.toISOString()}>{day.getDate()}</b>
-                : <span key={day.toISOString()}>{day.getDate()}</span>)}</div>
+const CalendarPage = React.memo(({ color }: { color: string }) => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const count = new Date(year, month + 1, 0).getDate();
+  const offset = new Date(year, month, 1).getDay();
+
+  const names = [
+    'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+  ];
+
+  return (
+    <div
+      className="h-full w-full px-6 pt-24 pb-32"
+      style={{ color }}
+    >
+      <div
+        className="rounded-[2rem] p-6 bg-white/15 border border-white/25 shadow-2xl"
+        style={{
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+        }}
+      >
+        <h2 className="text-xl font-bold tracking-[.15em] mb-5">
+          {names[month]} {year}
+        </h2>
+
+        <div className="grid grid-cols-7 gap-y-3 text-center">
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+            <div
+              key={index}
+              className="text-[10px] opacity-45 font-bold"
+            >
+              {day}
+            </div>
+          ))}
+
+          {Array.from({ length: offset }).map((_, index) => (
+            <div key={`empty-${index}`} />
+          ))}
+
+          {Array.from({ length: count }, (_, index) => index + 1).map(
+            (day) => (
+              <div
+                key={day}
+                className={`h-8 grid place-items-center text-sm ${
+                  day === now.getDate()
+                    ? 'rounded-full bg-white text-black font-bold shadow-lg'
+                    : 'opacity-80'
+                }`}
+              >
+                {day}
+              </div>
+            ),
+          )}
         </div>
-        <span className="ios-label">日历</span>
-    </div>;
-}
+      </div>
 
-function IOSHome() {
-    const { openApp, unreadMessages, virtualTime, realtimeConfig, theme } = useOS();
-    const [folder, setFolder] = useState<(typeof IOS_FOLDERS)[number] | null>(null);
-    const [search, setSearch] = useState(false);
-    const [query, setQuery] = useState('');
-    const [page, setPage] = useState(0);
-    const [weather, setWeather] = useState<WeatherData | null>(null);
-    const pageRef = useRef<HTMLDivElement>(null);
-    const dockRef = useRef<HTMLElement>(null);
-    const closeRef = useRef<HTMLButtonElement>(null);
-    const dialogOpen = search || folder !== null;
-    const unread = Object.values(unreadMessages).reduce((sum, count) => sum + count, 0);
-    const weatherEnabled = realtimeConfig.weatherEnabled && Boolean(realtimeConfig.weatherApiKey);
-
-    useEffect(() => {
-        if (!weatherEnabled) return;
-        let active = true;
-        const refresh = () => void RealtimeContextManager.fetchWeather(realtimeConfig)
-            .then(data => { if (active) setWeather(data); });
-        refresh();
-        const timer = window.setInterval(refresh, 10 * 60 * 1000);
-        return () => { active = false; window.clearInterval(timer); };
-    }, [realtimeConfig, weatherEnabled]);
-
-    useEffect(() => { if (folder) closeRef.current?.focus(); }, [folder]);
-    useEffect(() => {
-        pageRef.current?.toggleAttribute('inert', dialogOpen);
-        dockRef.current?.toggleAttribute('inert', dialogOpen);
-    }, [dialogOpen]);
-
-    const dismiss = () => { setFolder(null); setSearch(false); setQuery(''); };
-    const appButton = (id: AppID, dock = false) => {
-        const app = IOS_ICONS.get(id);
-        if (!app) return null;
-        return <button key={id} className="ios-app" aria-label={app.name}
-            onClick={() => { dismiss(); openApp(id); }}>
-            <IOSIcon id={id} />
-            {!dock && <span className="ios-label">{app.name}</span>}
-            {id === AppID.Chat && unread > 0 && <span className="ios-badge">{unread > 99 ? '99+' : unread}</span>}
-        </button>;
-    };
-
-    const visibleWeather = weatherEnabled ? weather : null;
-    const WeatherIcon = visibleWeather?.icon.startsWith('01') ? (visibleWeather.icon.endsWith('n') ? Moon : Sun)
-        : /^(09|10|11)/.test(visibleWeather?.icon || '') ? CloudRain : Cloud;
-    const results = IOS_APPS.filter(app => app.id !== AppID.CharCreatorDev || isDevDebugAvailable())
-        .filter(app => (app.name + ' ' + app.id).toLowerCase().includes(query.trim().toLowerCase()));
-    const defaultWallpaper = /#FFDEE9\b/i.test(theme.wallpaper);
-
-    return <main className="ios-home" style={defaultWallpaper ? { background: 'linear-gradient(148deg,#859099,#535d65 52%,#353e46)' } : undefined}>
-        <style>{IOS_HOME_CSS}</style>
-        <div className="ios-home-pages" ref={pageRef} aria-hidden={dialogOpen || undefined}
-            onScroll={event => setPage(Math.round(event.currentTarget.scrollLeft / (event.currentTarget.clientWidth || 1)))}>
-            <section className="ios-home-page" aria-label="主屏幕第一页">
-                <div className="ios-widget-row">
-                    <div className="ios-widget-wrap ios-widget-wide">
-                        <button className="ios-widget" onClick={() => openApp(AppID.Settings)} aria-label="天气设置">
-                            <div className="ios-weather-top">
-                                <div><div className="ios-weather-city">{visibleWeather?.city || realtimeConfig.weatherCity || '天气'}</div>
-                                    <div className="ios-weather-temp">{visibleWeather ? `${visibleWeather.temp}°` : '—°'}</div></div>
-                                <div className="ios-weather-status"><WeatherIcon size={27} weight="fill" />
-                                    <span>{visibleWeather?.description || (weatherEnabled ? '暂无天气数据' : '点此配置天气')}</span></div>
-                            </div>
-                            <div className="ios-weather-footer">
-                                <span>体感 <strong>{visibleWeather ? `${visibleWeather.feelsLike}°` : '—'}</strong></span>
-                                <span>湿度 <strong>{visibleWeather ? `${visibleWeather.humidity}%` : '—'}</strong></span>
-                            </div>
-                        </button>
-                        <span className="ios-label">天气</span>
-                    </div>
-                </div>
-                <div className="ios-grid">
-                    {IOS_FOLDERS.map(group => <button key={group.name} className="ios-folder" onClick={() => setFolder(group)}>
-                        <span className="ios-folder-tile">{group.apps.slice(0, 4).map(id => <IOSIcon key={id} id={id}/>)}</span>
-                        <span className="ios-label">{group.name}</span>
-                    </button>)}
-                    {[AppID.Character, AppID.MemoryPalace, AppID.Study, AppID.Worldbook, AppID.Schedule, AppID.Appearance, AppID.Settings, AppID.FAQ, AppID.ThemeMaker].map(id => appButton(id))}
-                </div>
-            </section>
-            <section className="ios-home-page" aria-label="主屏幕第二页">
-                <div className="ios-widget-row"><IOSCalendarWidget /><IOSClockWidget {...virtualTime}/></div>
-                <div className="ios-grid">
-                    {IOS_SECONDARY.map(id => appButton(id))}
-                    {Array.from({ length: 7 }, (_, i) => <span key={i} aria-hidden="true"/>)}
-                    {[AppID.Browser, AppID.Worldbook, AppID.ThemeMaker, AppID.Appearance].map(id => appButton(id))}
-                </div>
-            </section>
+      <div
+        className="mt-5 rounded-[2rem] p-5 bg-white/12 border border-white/20 min-h-40"
+        style={{
+          backdropFilter: 'blur(22px)',
+          WebkitBackdropFilter: 'blur(22px)',
+        }}
+      >
+        <div className="text-[11px] uppercase tracking-[.2em] font-bold opacity-60">
+          Upcoming Events
         </div>
-        <button className="ios-search" onClick={() => setSearch(true)} tabIndex={dialogOpen ? -1 : 0}>
-            <MagnifyingGlass size={13} weight="bold"/>搜索
-        </button>
-        <button className="ios-page-turn" aria-label={page ? '上一页' : '下一页'} tabIndex={dialogOpen ? -1 : 0}
-            onClick={() => pageRef.current?.scrollTo({ left: page ? 0 : pageRef.current.clientWidth, behavior: 'smooth' })}>
-            {page ? '‹' : '›'}
-        </button>
-        <nav className="ios-dock" ref={dockRef} aria-label="Dock" aria-hidden={dialogOpen || undefined}>
-            {IOS_DOCK.map(id => appButton(id, true))}
-        </nav>
-        {dialogOpen && <div className="ios-home-dialog" onClick={dismiss} onKeyDown={event => { if (event.key === 'Escape') dismiss(); }}>
-            <section className="ios-home-panel" role="dialog" aria-modal="true" aria-label={folder?.name || '搜索应用'} onClick={event => event.stopPropagation()}>
-                <header className="ios-panel-head"><h2>{folder?.name || '搜索应用'}</h2>
-                    <button ref={closeRef} aria-label="关闭" onClick={dismiss}><X size={16} weight="bold"/></button></header>
-                {search && <input autoFocus value={query} onChange={event => setQuery(event.target.value)} aria-label="应用名称" placeholder="搜索应用"/>}
-                <div className="ios-grid">{(folder ? folder.apps : results.map(app => app.id)).map(id => appButton(id))}</div>
-                {search && results.length === 0 && <p className="ios-home-missing">没有找到应用</p>}
-            </section>
-        </div>}
-    </main>;
-}
 
-export default function HomeLauncher() { return <IOSHome />; }
+        <div className="h-28 grid place-items-center text-xs opacity-40">
+          No upcoming events
+        </div>
+      </div>
+    </div>
+  );
+});
+
+let rememberedPage = 0;
+
+const Launcher: React.FC = () => {
+  const {
+    openApp,
+    characters,
+    activeCharacterId,
+    theme,
+    lastMsgTimestamp,
+    isDataLoaded,
+    unreadMessages,
+  } = useOS();
+
+  const [char, setChar] = useState<CharacterProfile | null>(null);
+  const [message, setMessage] = useState('System Ready.');
+  const [schedule, setSchedule] = useState<DailySchedule | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [page, setPage] = useState(rememberedPage);
+
+  const scroller = useRef<HTMLDivElement>(null);
+  const color = theme.contentColor || '#fff';
+
+  const apps = useMemo(
+    () =>
+      INSTALLED_APPS.filter(
+        (app) =>
+          !DOCK_APPS.includes(app.id) &&
+          app.id !== AppID.CharCreatorDev,
+      ),
+    [],
+  );
+
+  const dockApps = useMemo(
+    () =>
+      DOCK_APPS.map((id) =>
+        INSTALLED_APPS.find((app) => app.id === id),
+      ).filter(Boolean) as typeof INSTALLED_APPS,
+    [],
+  );
+
+  const pages = useMemo(() => {
+    const result: typeof INSTALLED_APPS[] = [];
+
+    for (let index = 0; index < apps.length; index += 8) {
+      result.push(apps.slice(index, index + 8));
+    }
+
+    while (result.length < 3) {
+      result.push([]);
+    }
+
+    return result;
+  }, [apps]);
+
+  useEffect(() => {
+    if (!isDataLoaded || !characters.length) {
+      setChar(null);
+      return;
+    }
+
+    const current =
+      characters.find(
+        (character) => character.id === activeCharacterId,
+      ) || characters[0];
+
+    setChar(current);
+
+    DB.getMessagesByCharId(current.id)
+      .then((messages) => {
+        const visible = messages.filter(
+          (item) => item.role !== 'system',
+        );
+
+        const last = visible[visible.length - 1];
+
+        setMessage(
+          last?.content?.replace(/\[.*?\]/g, '').trim() ||
+            current.description ||
+            'System Ready.',
+        );
+      })
+      .catch(() => {
+        setMessage(current.description || 'System Ready.');
+      });
+
+    const date = new Date().toISOString().split('T')[0];
+
+    DB.getDailySchedule(current.id, date)
+      .then(setSchedule)
+      .catch(() => setSchedule(null));
+  }, [
+    characters,
+    activeCharacterId,
+    lastMsgTimestamp,
+    isDataLoaded,
+  ]);
+
+  useEffect(() => {
+    const element = scroller.current;
+
+    if (element && rememberedPage) {
+      requestAnimationFrame(() => {
+        element.scrollLeft =
+          element.clientWidth * rememberedPage;
+      });
+    }
+  }, []);
+
+  const onScroll = () => {
+    if (!scroller.current) return;
+
+    const next = Math.round(
+      scroller.current.scrollLeft /
+        scroller.current.clientWidth,
+    );
+
+    setPage(next);
+    rememberedPage = next;
+  };
+
+  const totalUnread = Object.values(unreadMessages).reduce(
+    (total, count) => total + count,
+    0,
+  );
+
+  const characterUnread = char
+    ? unreadMessages[char.id] || 0
+    : 0;
+
+  const totalPages = pages.length + 1;
+
+  return (
+    <div className="glass-launcher h-full w-full relative overflow-hidden select-none">
+      <style>{GLASS_CSS}</style>
+
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_90%_5%,rgba(255,255,255,.1),transparent_32%),radial-gradient(circle_at_5%_95%,rgba(100,170,255,.1),transparent_35%)]" />
+
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        className="h-full flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
+        style={{
+          scrollBehavior: 'smooth',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
+        {pages.map((pageApps, index) => (
+          <section
+            key={index}
+            className="w-full h-full shrink-0 snap-center px-5 pt-12 pb-32 flex flex-col"
+          >
+            {index === 0 ? (
+              <>
+                <Clock />
+
+                <CharacterCard
+                  char={char}
+                  unread={characterUnread}
+                  message={message}
+                  onClick={() => openApp(AppID.Chat)}
+                />
+
+                <div className="flex-1">
+                  <AppGrid
+                    apps={pageApps}
+                    openApp={openApp}
+                  />
+                </div>
+              </>
+            ) : index === 1 ? (
+              <div className="flex-1 min-h-0 flex flex-col justify-center gap-4">
+                {char && (
+                  <ScheduleHomeWidget
+                    schedule={schedule}
+                    character={char}
+                    contentColor={color}
+                    onOpen={() => setScheduleOpen(true)}
+                  />
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="aspect-square">
+                    <NowPlayingSquareWidget
+                      contentColor={color}
+                    />
+                  </div>
+
+                  <div className="aspect-square grid place-items-center">
+                    <AppGrid
+                      apps={pageApps.slice(0, 4)}
+                      openApp={openApp}
+                      compact
+                    />
+                  </div>
+
+                  <div className="aspect-square grid place-items-center">
+                    <AppGrid
+                      apps={pageApps.slice(4, 8)}
+                      openApp={openApp}
+                      compact
+                    />
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      openApp(AppID.Appearance)
+                    }
+                    className="aspect-square rounded-[1.75rem] overflow-hidden border border-white/25 bg-white/15 active:scale-[.98] transition-transform"
+                    style={{
+                      backdropFilter: 'blur(20px)',
+                      WebkitBackdropFilter: 'blur(20px)',
+                    }}
+                  >
+                    {theme.launcherWidgets?.['dsq'] ? (
+                      <img
+                        src={theme.launcherWidgets['dsq']}
+                        className="w-full h-full object-cover"
+                        alt=""
+                      />
+                    ) : (
+                      <div
+                        className="h-full grid place-items-center text-center"
+                        style={{ color }}
+                      >
+                        <div>
+                          <div className="text-3xl opacity-65">
+                            ◇
+                          </div>
+
+                          <div className="text-[10px] uppercase tracking-[.18em] opacity-55 mt-2">
+                            Add Image
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 pt-12">
+                <AppGrid
+                  apps={pageApps}
+                  openApp={openApp}
+                />
+              </div>
+            )}
+          </section>
+        ))}
+
+        <section className="w-full h-full shrink-0 snap-center">
+          <CalendarPage color={color} />
+        </section>
+      </div>
+
+      <div className="absolute left-0 right-0 bottom-[7.25rem] flex justify-center gap-2 pointer-events-none">
+        {Array.from({ length: totalPages }).map(
+          (_, index) => (
+            <span
+              key={index}
+              className={`h-1.5 rounded-full transition-all ${
+                page === index
+                  ? 'w-4 opacity-100'
+                  : 'w-1.5 opacity-40'
+              }`}
+              style={{ background: color }}
+            />
+          ),
+        )}
+      </div>
+
+      <div className="absolute left-0 right-0 bottom-5 px-4 flex justify-center">
+        <div className="glass-icons glass-dock rounded-[1.8rem] px-4 py-3 flex items-center justify-center gap-3 sm:gap-6 max-w-full overflow-x-auto no-scrollbar">
+          {dockApps.map((app) => (
+            <div
+              key={app.id}
+              className="relative shrink-0"
+            >
+              <AppIcon
+                app={app}
+                onClick={() => openApp(app.id)}
+                variant="dock"
+                size="md"
+              />
+
+              {app.id === AppID.Chat &&
+                totalUnread > 0 && (
+                  <span className="absolute -right-1 -top-1 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold grid place-items-center border-2 border-white/30">
+                    {totalUnread > 9
+                      ? '9+'
+                      : totalUnread}
+                  </span>
+                )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <ScheduleFullscreenViewer
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        characters={characters}
+        activeCharId={char?.id || null}
+        onSwitchCharacter={() => {}}
+        schedule={schedule}
+        activeCharacter={char}
+        contentColor={color}
+      />
+    </div>
+  );
+};
+
+export default Launcher;
